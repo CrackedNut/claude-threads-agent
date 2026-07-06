@@ -100,7 +100,9 @@ export async function uploadImages(
     }
 
     try {
-      const buffer = await downloadFile(file.id);
+      // URL-based platforms (Discord) put the fetchable location in file.url;
+      // id-based platforms (Mattermost/Slack) download by id.
+      const buffer = await downloadFile(file.url ?? file.id);
       const url = await uploadImageToCatbox(buffer, file.name);
       results.push({
         success: true,

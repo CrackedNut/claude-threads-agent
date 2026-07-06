@@ -140,7 +140,8 @@ async function showPlatformInstructions(platformType: 'mattermost' | 'slack' | '
     console.log(dim('  2. Invite the bot:'));
     console.log(dim('     • OAuth2 → URL Generator → scopes: bot'));
     console.log(dim('     • Bot permissions: Send Messages, Read Message History,'));
-    console.log(dim('       Add Reactions, Attach Files, Create Public Threads'));
+    console.log(dim('       Add Reactions, Attach Files, Create Public Threads,'));
+    console.log(dim('       Send Messages in Threads (needed for !thread sessions)'));
     console.log(dim('     • Open the generated URL and add the bot to your server'));
     console.log('');
     console.log(dim('  3. Channel ID:'));

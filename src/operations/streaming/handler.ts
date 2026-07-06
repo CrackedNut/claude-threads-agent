@@ -152,7 +152,9 @@ export async function saveFilesToUploadDir(
 
   for (const file of files) {
     try {
-      const buffer = await platform.downloadFile(file.id);
+      // URL-based platforms (Discord) put the fetchable location in file.url;
+      // id-based platforms (Mattermost/Slack) download by id.
+      const buffer = await platform.downloadFile(file.url ?? file.id);
       // Resolve a unique name BEFORE writing so the 'wx' flag stays meaningful
       // for symlink-race protection rather than tripping on our own dupes.
       const safeName = dedupeFilename(sanitizeFilename(file.name), usedNames);

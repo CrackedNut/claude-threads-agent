@@ -22,6 +22,7 @@ import {
   Partials,
   Events,
   ChannelType,
+  PermissionFlagsBits,
   type Message,
   type TextBasedChannel,
   type User as DiscordUser,
@@ -180,7 +181,11 @@ export class DiscordClient extends BasePlatformClient {
     const isDM = message.channel.type === ChannelType.DM;
     // Home-channel gating without allChannels: only the configured channel
     // (and DMs) talk to the bot. With allChannels, every visible channel does.
-    if (!this.allChannels && !isDM && message.channel.id !== this.channelId) return;
+    // Native threads hanging off the home channel count as home — !thread
+    // spawns sessions in them, so dropping their messages would let the bot
+    // create a thread it then ignores.
+    const isHomeThread = this.isThreadOf(message.channel, this.channelId);
+    if (!this.allChannels && !isDM && message.channel.id !== this.channelId && !isHomeThread) return;
 
     this.indexMessage(message.id, message.channel.id);
     const post = this.normalizePost(message, isDM);
@@ -246,7 +251,7 @@ export class DiscordClient extends BasePlatformClient {
     };
   }
 
-  private normalizeFile(a: { id: string; name: string; size: number; contentType?: string | null }): PlatformFile {
+  private normalizeFile(a: { id: string; name: string; size: number; contentType?: string | null; url: string }): PlatformFile {
     const ext = a.name.includes('.') ? a.name.split('.').pop() : undefined;
     return {
       id: a.id,
@@ -254,6 +259,9 @@ export class DiscordClient extends BasePlatformClient {
       size: a.size,
       mimeType: a.contentType ?? 'application/octet-stream',
       extension: ext,
+      // Discord attachments download from a (signed, expiring) CDN URL — the
+      // snowflake id alone is not fetchable. downloadFile() needs this.
+      url: a.url,
     };
   }
 
@@ -369,20 +377,54 @@ export class DiscordClient extends BasePlatformClient {
     };
   }
 
+  /** Is `channel` a native thread whose parent is `parentChannelId`? */
+  private isThreadOf(channel: unknown, parentChannelId: string): boolean {
+    const c = channel as { isThread?: () => boolean; parentId?: string | null };
+    return typeof c.isThread === 'function' && c.isThread() && c.parentId === parentChannelId;
+  }
+
   /**
    * Start a native Discord thread hanging off the anchor message. Returns the
    * thread channel's id — which becomes the session's channel (a Discord
    * thread is just another text channel, so it runs as a channel-mode
-   * session). Needs the "Create Public Threads" permission.
+   * session).
+   *
+   * Permission pre-flight: creating a thread needs "Create Public Threads",
+   * but POSTING in it needs the separate "Send Messages in Threads" grant.
+   * Without the pre-flight, a bot missing the latter creates the thread and
+   * then silently fails every post inside it — the session looks started but
+   * never says a word. Refuse up front with the exact missing permission so
+   * the caller can tell the user what to fix.
    */
   async createThread(
     parentChannelId: string,
     anchorPostId: string,
     name: string,
-  ): Promise<{ id: string } | null> {
+  ): Promise<{ id: string } | { error: string }> {
     try {
       const channel = await this.resolveChannel(parentChannelId);
-      if (!channel || !('messages' in channel)) return null;
+      if (!channel || !('messages' in channel)) {
+        return { error: `channel ${parentChannelId} not found or not text-based` };
+      }
+      if (!('threads' in channel)) {
+        return { error: 'this channel type does not support threads (DMs have no thread sessions — just keep chatting here)' };
+      }
+      if (this.client?.user && 'permissionsFor' in channel) {
+        const perms = channel.permissionsFor(this.client.user);
+        const missing = [
+          [PermissionFlagsBits.CreatePublicThreads, 'Create Public Threads'],
+          [PermissionFlagsBits.SendMessagesInThreads, 'Send Messages in Threads'],
+        ]
+          .filter(([flag]) => perms && !perms.has(flag as bigint))
+          .map(([, label]) => label as string);
+        if (missing.length > 0) {
+          return {
+            error:
+              `the bot is missing the ${missing.map((m) => `"${m}"`).join(' and ')} ` +
+              `permission${missing.length > 1 ? 's' : ''} in this channel — update the bot's role or re-invite it, then retry`,
+          };
+        }
+      }
       const msg = await channel.messages.fetch(anchorPostId);
       const thread = await msg.startThread({
         name: (name || 'Claude session').slice(0, 100),
@@ -393,7 +435,7 @@ export class DiscordClient extends BasePlatformClient {
       return { id: thread.id };
     } catch (err) {
       log.warn(`createThread failed: ${err}`);
-      return null;
+      return { error: err instanceof Error ? err.message : String(err) };
     }
   }
 
@@ -551,7 +593,12 @@ export class DiscordClient extends BasePlatformClient {
   }
 
   async downloadFile(fileUrl: string): Promise<Buffer> {
-    // Discord attachment ids aren't directly fetchable; callers pass the URL.
+    // Discord attachment ids aren't directly fetchable; callers pass the CDN
+    // URL (PlatformFile.url). Fail loudly on a bare id so the mistake surfaces
+    // as a clear skipped-file reason instead of a cryptic fetch error.
+    if (!/^https?:\/\//.test(fileUrl)) {
+      throw new Error('Discord file downloads need the attachment URL (PlatformFile.url), got a bare id');
+    }
     const res = await fetch(fileUrl);
     if (!res.ok) throw new Error(`Failed to download file: ${res.status}`);
     return Buffer.from(await res.arrayBuffer());

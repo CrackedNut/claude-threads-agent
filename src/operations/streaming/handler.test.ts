@@ -8,11 +8,14 @@
  */
 
 import { describe, test, expect, beforeEach, mock } from 'bun:test';
-import { startTyping, stopTyping } from './handler.js';
+import { startTyping, stopTyping, saveFilesToUploadDir } from './handler.js';
 import type { Session } from '../../session/types.js';
 import { createSessionTimers, createSessionLifecycle } from '../../session/types.js';
 import type { PlatformClient } from '../../platform/index.js';
 import { createMockFormatter } from '../../test-utils/mock-formatter.js';
+import { mkdtemp, rm } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 // Mock platform client (minimal version for streaming tests)
 function createMockPlatform() {
@@ -106,6 +109,37 @@ describe('stopTyping', () => {
     // Should not throw
     stopTyping(session);
     expect(session.timers.typingTimer).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Attachment download-reference tests
+// ---------------------------------------------------------------------------
+
+describe('saveFilesToUploadDir', () => {
+  test('downloads by url when the platform provides one, by id otherwise', async () => {
+    // Discord attachments are only fetchable via their CDN url — passing the
+    // snowflake id made every inbound Discord file fail to download.
+    const refs: string[] = [];
+    const platform = {
+      downloadFile: mock(async (ref: string) => {
+        refs.push(ref);
+        return Buffer.from('content');
+      }),
+    } as unknown as PlatformClient;
+
+    const dir = await mkdtemp(join(tmpdir(), 'oi-upload-test-'));
+    try {
+      const { saved, skipped } = await saveFilesToUploadDir(platform, join(dir, 'up'), [
+        { id: 'f1', name: 'shot.png', size: 7, mimeType: 'image/png', url: 'https://cdn.example/shot.png' },
+        { id: 'f2', name: 'notes.txt', size: 7, mimeType: 'text/plain' },
+      ]);
+      expect(refs).toEqual(['https://cdn.example/shot.png', 'f2']);
+      expect(saved.length).toBe(2);
+      expect(skipped.length).toBe(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 

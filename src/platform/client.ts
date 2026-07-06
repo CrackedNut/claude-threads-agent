@@ -166,9 +166,14 @@ export interface PlatformClient extends EventEmitter {
    * Only platforms with real thread channels implement this (Discord).
    * Mattermost/Slack model threads as replies to a root post, so they leave
    * it undefined and `!thread` keys the session off the anchor post id
-   * instead. Returns null if the thread couldn't be created.
+   * instead.
+   *
+   * On failure, returns `{ error }` with a user-presentable reason (e.g. a
+   * missing permission). Callers must surface it — falling back to the
+   * reply-threading model is NOT valid on native-thread platforms (a session
+   * anchored at a post id can't post there).
    */
-  createThread?(parentChannelId: string, anchorPostId: string, name: string): Promise<{ id: string } | null>;
+  createThread?(parentChannelId: string, anchorPostId: string, name: string): Promise<{ id: string } | { error: string }>;
 
   /**
    * Update an existing post/message

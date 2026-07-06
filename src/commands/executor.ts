@@ -406,11 +406,17 @@ const handleThread: CommandHandler = async (ctx, args) => {
     // off the anchor and run a channel-mode session INSIDE it — on those
     // platforms a thread is just another channel. Reply-threading platforms
     // (Mattermost/Slack) anchor a thread-mode session off the anchor post id.
-    const nativeThread = ctx.client.createThread
-      ? await ctx.client.createThread(ctx.threadId, anchor.id, topic ?? 'Claude session')
-      : null;
-
-    if (nativeThread) {
+    if (ctx.client.createThread) {
+      const nativeThread = await ctx.client.createThread(ctx.threadId, anchor.id, topic ?? 'Claude session');
+      if ('error' in nativeThread) {
+        // No reply-threading fallback on native-thread platforms — a session
+        // anchored at a post id can't post anywhere. Fail loudly instead.
+        await ctx.client.createPost(
+          `⚠️ Couldn't start a thread session: ${nativeThread.error}`,
+          ctx.threadId,
+        );
+        return { handled: true };
+      }
       await ctx.sessionManager.startSession(
         { prompt },
         ctx.username,

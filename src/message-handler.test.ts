@@ -1912,6 +1912,41 @@ describe('handleMessage', () => {
       expect(initialOptions.originChannelId).toBe('thread-chan-42');
     });
 
+    test('!thread surfaces a createThread failure instead of starting a broken session', async () => {
+      (session.findChannelSession as any).mockImplementation(() => undefined);
+      (session.registry.getPersistedByThreadId as any).mockImplementation(() => undefined);
+      (client.isBotMentioned as any).mockImplementation(() => true);
+      (client.extractPrompt as any).mockImplementation(() => '!thread do the thing');
+      (client.isUserAllowed as any).mockImplementation(() => true);
+      // Native-thread platform where thread creation fails (e.g. the bot is
+      // missing "Send Messages in Threads"). Falling back to reply-threading
+      // would key a session off a post id it can never post to — the old
+      // silent-!thread bug.
+      (client as any).createThread = mock(async () => ({
+        error: 'the bot is missing the "Send Messages in Threads" permission in this channel',
+      }));
+
+      const post: PlatformPost = {
+        id: 'p-thread-anchor',
+        rootId: '',
+        channelId: 'c-9',
+        userId: 'u-1',
+        message: '@bot !thread do the thing',
+        platformId: 'test-platform',
+        createAt: Date.now(),
+      };
+      const user: PlatformUser = { id: 'u-1', username: 'allowed-user', displayName: 'Alice' };
+      (client.getHomeChannelId as any).mockImplementation(() => post.channelId);
+
+      await handleMessage(client, session, post, user, options);
+
+      // No session — and the user was told exactly what to fix.
+      expect(session.startSession).not.toHaveBeenCalled();
+      const calls = (client.createPost as any).mock.calls;
+      const errorCall = calls.find(([msg]: [string]) => msg.includes('Send Messages in Threads'));
+      expect(errorCall).toBeDefined();
+    });
+
     test('!thread inside an existing thread posts a hint and starts normally', async () => {
       (session.registry.findByThreadId as any).mockImplementation(() => undefined);
       (session.registry.getPersistedByThreadId as any).mockImplementation(() => undefined);

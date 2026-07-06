@@ -51,6 +51,10 @@ export interface PlatformFile {
   size: number;         // File size in bytes
   mimeType: string;     // MIME type (e.g., 'image/png')
   extension?: string;   // File extension
+  // Direct download URL. Platforms whose file API is URL-based (Discord CDN
+  // attachments) set this; id-based platforms (Mattermost/Slack) leave it
+  // unset and downloadFile() receives the id instead.
+  url?: string;
 }
 
 /**

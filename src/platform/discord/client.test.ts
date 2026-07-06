@@ -33,12 +33,22 @@ function fakeMessage(opts: {
   channelType?: ChannelType;
   authorId?: string;
   content: string;
-  attachments?: Array<{ id: string; name: string; size: number; contentType?: string }>;
+  attachments?: Array<{ id: string; name: string; size: number; contentType?: string; url?: string }>;
+  threadParentId?: string; // makes the channel a native thread of this parent
 }) {
   const atts = new Map((opts.attachments ?? []).map((a) => [a.id, a]));
+  const channel: Record<string, unknown> = {
+    id: opts.channelId,
+    type: opts.channelType ?? ChannelType.GuildText,
+  };
+  if (opts.threadParentId !== undefined) {
+    channel.type = opts.channelType ?? ChannelType.PublicThread;
+    channel.isThread = () => true;
+    channel.parentId = opts.threadParentId;
+  }
   return {
     id: opts.id ?? 'msg-1',
-    channel: { id: opts.channelId, type: opts.channelType ?? ChannelType.GuildText },
+    channel,
     author: { id: opts.authorId ?? 'user-1', username: 'alice', bot: false },
     content: opts.content,
     createdTimestamp: 1000,
@@ -68,11 +78,81 @@ describe('DiscordClient login error guidance', () => {
   });
 });
 
+// Wire a fake discord.js Client exposing one resolvable guild channel.
+function withFakeGateway(
+  c: DiscordClient,
+  channel: Record<string, unknown>,
+): void {
+  (c as unknown as { client: unknown }).client = {
+    user: { id: 'bot-999' },
+    channels: {
+      cache: new Map(),
+      fetch: async () => ({ isTextBased: () => true, ...channel }),
+    },
+  };
+}
+
+function fakeGuildChannel(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'chan-1',
+    threads: {},
+    messages: {
+      fetch: async () => ({
+        startThread: async () => ({ id: 'thread-77' }),
+      }),
+    },
+    permissionsFor: () => ({ has: () => true }),
+    ...overrides,
+  };
+}
+
 describe('DiscordClient createThread', () => {
-  it('returns null (not throw) when there is no live gateway client', async () => {
+  it('returns an error (not throw) when there is no live gateway client', async () => {
     const c = makeClient();
     const res = await c.createThread('chan-1', 'msg-1', 'topic');
-    expect(res).toBeNull();
+    expect(res && 'error' in res).toBe(true);
+  });
+
+  it('creates the thread when all permissions are granted', async () => {
+    const c = makeClient();
+    withFakeGateway(c, fakeGuildChannel());
+    const res = await c.createThread('chan-1', 'msg-1', 'topic');
+    expect(res).toEqual({ id: 'thread-77' });
+  });
+
+  it('refuses with the exact missing permission instead of creating a thread it cannot post in', async () => {
+    // "Send Messages in Threads" is a SEPARATE grant from "Send Messages":
+    // without the pre-flight the thread gets created and every post inside
+    // 403s — the silent-!thread bug.
+    const { PermissionFlagsBits } = await import('discord.js');
+    const c = makeClient();
+    let threadCreated = false;
+    withFakeGateway(
+      c,
+      fakeGuildChannel({
+        permissionsFor: () => ({
+          has: (flag: bigint) => flag !== PermissionFlagsBits.SendMessagesInThreads,
+        }),
+        messages: {
+          fetch: async () => ({
+            startThread: async () => {
+              threadCreated = true;
+              return { id: 'thread-77' };
+            },
+          }),
+        },
+      }),
+    );
+    const res = await c.createThread('chan-1', 'msg-1', 'topic');
+    expect(res && 'error' in res && res.error).toContain('Send Messages in Threads');
+    expect(threadCreated).toBe(false);
+  });
+
+  it('refuses in channels without thread support (DMs)', async () => {
+    const c = makeClient();
+    withFakeGateway(c, { id: 'dm-1', messages: { fetch: async () => ({}) } }); // no `threads`
+    const res = await c.createThread('dm-1', 'msg-1', 'topic');
+    expect(res && 'error' in res && res.error).toContain('does not support threads');
   });
 });
 
@@ -148,5 +228,72 @@ describe('DiscordClient normalization (channel-mode model)', () => {
     ) as { metadata?: { files?: Array<{ name: string; extension?: string }> } };
     expect(post.metadata?.files?.[0].name).toBe('log.txt');
     expect(post.metadata?.files?.[0].extension).toBe('txt');
+  });
+
+  it('carries the attachment CDN url — the id alone is not downloadable', () => {
+    const c = makeClient();
+    const post = (c as unknown as { normalizePost: (m: unknown, dm: boolean) => unknown }).normalizePost(
+      fakeMessage({
+        channelId: 'chan-7',
+        content: 'screenshot',
+        attachments: [{
+          id: 'f2',
+          name: 'shot.png',
+          size: 999,
+          contentType: 'image/png',
+          url: 'https://cdn.discordapp.com/attachments/1/2/shot.png?ex=abc',
+        }],
+      }),
+      false,
+    ) as { metadata?: { files?: Array<{ url?: string }> } };
+    expect(post.metadata?.files?.[0].url).toBe('https://cdn.discordapp.com/attachments/1/2/shot.png?ex=abc');
+  });
+});
+
+describe('DiscordClient downloadFile', () => {
+  it('rejects a bare attachment id with an actionable error', async () => {
+    const c = makeClient();
+    await expect(c.downloadFile('1234567890123456789')).rejects.toThrow(/attachment URL/);
+  });
+});
+
+describe('DiscordClient home-channel gating (no allChannels)', () => {
+  const incoming = (c: DiscordClient, m: unknown) =>
+    (c as unknown as { handleIncoming: (m: unknown) => Promise<void> }).handleIncoming(m);
+
+  function collectChannelPosts(c: DiscordClient): Array<{ channelId: string }> {
+    const posts: Array<{ channelId: string }> = [];
+    c.on('channel_post', (p) => posts.push(p as { channelId: string }));
+    return posts;
+  }
+
+  it('accepts messages in a native thread of the home channel — !thread sessions live there', async () => {
+    const c = makeClient(); // no allChannels
+    const posts = collectChannelPosts(c);
+    await incoming(c, fakeMessage({
+      channelId: 'thread-55',
+      threadParentId: 'home-channel-123',
+      content: 'follow-up inside the thread',
+    }));
+    expect(posts.length).toBe(1);
+    expect(posts[0].channelId).toBe('thread-55');
+  });
+
+  it('still drops messages in threads of OTHER channels', async () => {
+    const c = makeClient();
+    const posts = collectChannelPosts(c);
+    await incoming(c, fakeMessage({
+      channelId: 'thread-66',
+      threadParentId: 'some-other-channel',
+      content: 'not for us',
+    }));
+    expect(posts.length).toBe(0);
+  });
+
+  it('still drops messages in unrelated plain channels', async () => {
+    const c = makeClient();
+    const posts = collectChannelPosts(c);
+    await incoming(c, fakeMessage({ channelId: 'random-chan', content: 'nope' }));
+    expect(posts.length).toBe(0);
   });
 });

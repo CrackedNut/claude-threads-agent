@@ -430,10 +430,17 @@ export async function handleMessage(
         // thread off the @mention and run a channel-mode session inside it.
         // Reply-threading platforms (Mattermost/Slack): anchor a thread-mode
         // session at the @mention post (channelMode cleared).
-        const nativeThread = client.createThread
-          ? await client.createThread(post.channelId, post.id, 'Claude session')
-          : null;
-        if (nativeThread) {
+        if (client.createThread) {
+          const nativeThread = await client.createThread(post.channelId, post.id, 'Claude session');
+          if ('error' in nativeThread) {
+            // No reply-threading fallback here: on native-thread platforms a
+            // session anchored at a post id can't post anywhere. Fail loudly.
+            await client.createPost(
+              `⚠️ Couldn't start a thread session: ${nativeThread.error}`,
+              directReplyTo,
+            );
+            return;
+          }
           initialOptions.channelMode = { channelId: nativeThread.id };
           initialOptions.originChannelId = nativeThread.id;
           effectiveThreadRoot = nativeThread.id;

@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.3] - 2026-07-06
+
+### Fixed
+- **Discord: receiving files/screenshots now works.** Inbound attachments were downloaded by their snowflake id, but Discord attachments are only fetchable via their CDN URL — every uploaded file was skipped with "Download failed". Normalized files now carry the attachment URL and the download path uses it (Mattermost/Slack keep downloading by id).
+- **Discord: `!thread` no longer creates a thread and then goes silent.** Posting inside a thread needs the "Send Messages in Threads" permission — a *separate* grant from "Send Messages" — so a bot missing it created the thread and then silently failed every post inside. `createThread` now pre-flights the bot's permissions and refuses with the exact missing permission, which the bot posts to the channel. A failed native-thread creation also no longer falls back to a reply-threaded session (which can't post anywhere on Discord).
+- **Discord: home-channel threads answer without `allChannels`.** Messages in native threads hanging off the home channel were dropped by the home-channel gate, so even a successfully created `!thread` session ignored every follow-up unless `allChannels: true` was set. Threads of the home channel now count as home.
+- Onboarding: the Discord invite instructions now list "Send Messages in Threads" in the required bot permissions.
+
 ## [2.2.2] - 2026-06-11
 
 ### Fixed
