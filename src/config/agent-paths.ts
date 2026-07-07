@@ -65,6 +65,11 @@ export function resolveProjectsDir(config?: AgentPersonaConfig): string {
   return firstExisting([join(homedir(), 'agent-memory', 'projects')], join(AGENT_HOME, 'projects'));
 }
 
+export function resolveBrainDir(config?: AgentPersonaConfig): string {
+  if (config?.brain?.dir) return resolveTilde(config.brain.dir);
+  return join(AGENT_HOME, 'brain');
+}
+
 /** A skills dir only counts if it actually contains at least one SKILL.md. */
 function hasAnySkill(dir: string): boolean {
   return existsSync(dir) && findSkillEntries(dir).length > 0;
@@ -83,6 +88,7 @@ export interface AgentPaths {
   directives: string;
   projectsDir: string;
   skillsDir: string;
+  brainDir: string;
 }
 
 export function resolveAgentPaths(config?: Config | null): AgentPaths {
@@ -91,6 +97,7 @@ export function resolveAgentPaths(config?: Config | null): AgentPaths {
     directives: resolveDirectivesPath(config?.agentPersona),
     projectsDir: resolveProjectsDir(config?.agentPersona),
     skillsDir: resolveSkillsDir(config?.skillsIndex),
+    brainDir: resolveBrainDir(config?.agentPersona),
   };
 }
 

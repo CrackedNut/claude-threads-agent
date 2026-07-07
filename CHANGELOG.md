@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.5] - 2026-07-07
+
+### Added
+- **Second brain — persistent markdown memory.** The agent now has an Obsidian-compatible knowledge base (default `~/.config/claude-threads/agent/brain/`): one topic per note, `[[wikilinks]]` between notes, and an `INDEX.md` map inlined into every session's system prompt. The agent is instructed to read relevant notes before working and to update the brain whenever it finishes meaningful work or learns something durable — so knowledge accumulates across sessions, channels, and restarts. Point Obsidian at the folder for the graph view. Configure via `agentPersona.brain: { dir, enabled }`; on by default when `agentPersona` is configured, scaffolded automatically on first session.
+
 ## [2.2.4] - 2026-07-07
 
 ### Added

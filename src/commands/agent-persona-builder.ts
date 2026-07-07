@@ -29,6 +29,7 @@ import { join } from 'path';
 import type { AgentPersonaConfig } from '../config/types.js';
 import { createLogger } from '../utils/logger.js';
 import { resolveSoulPath, resolveDirectivesPath, resolveProjectsDir } from '../config/agent-paths.js';
+import { buildBrainText } from './brain-builder.js';
 
 const log = createLogger('agent-persona');
 
@@ -91,7 +92,14 @@ function buildProjectsIndex(dir: string): string | null {
  * "prepend if non-empty".
  *
  * Layer order matches Hermes' system_prompt.py: directives first (immutable
- * loops), then soul (identity), then projects index. Joined with `\n\n`.
+ * loops), then soul (identity), then projects index, then the second brain
+ * (conventions + inlined INDEX.md). Joined with `\n\n`.
+ *
+ * Note: the persona layer stays opt-in (an `agentPersona:` block must exist
+ * in config.yaml, as before). When present, the brain is ON by default and
+ * rides this layer to reach every spawn site without per-site wiring;
+ * `agentPersona.brain.enabled: false` disables just the brain,
+ * `agentPersona.enabled: false` disables all layers including it.
  */
 export function buildAgentPersonaText(config?: AgentPersonaConfig): string {
   if (!config || config.enabled === false) return '';
@@ -113,6 +121,9 @@ export function buildAgentPersonaText(config?: AgentPersonaConfig): string {
 
   const projectsIndex = buildProjectsIndex(projectsDir);
   if (projectsIndex) parts.push(projectsIndex);
+
+  const brainText = buildBrainText(config);
+  if (brainText) parts.push(brainText);
 
   return parts.join('\n\n');
 }

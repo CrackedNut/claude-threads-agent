@@ -201,6 +201,23 @@ export interface AgentPersonaConfig {
   soulPath?: string;
   directivesPath?: string;
   projectsIndexDir?: string;
+  /** Second-brain markdown knowledge base. On by default; see BrainConfig. */
+  brain?: BrainConfig;
+}
+
+/**
+ * Second brain — a persistent, Obsidian-compatible markdown knowledge base
+ * the agent reads at session start (via an inlined INDEX.md) and updates as
+ * it works. One topic per note, `[[wikilinks]]` between notes.
+ *
+ * Default dir: `<agent home>/brain` (~/.config/claude-threads/agent/brain).
+ * Point `dir` at an Obsidian vault folder to get the graph view over the
+ * agent's memory for free. `enabled: false` removes the prompt section and
+ * skips the scaffold (existing files are never touched).
+ */
+export interface BrainConfig {
+  enabled?: boolean;
+  dir?: string;
 }
 
 /**

@@ -34,6 +34,9 @@ describe('buildAgentPersonaText', () => {
         soulPath: join(tmpRoot, 'missing-soul.md'),
         directivesPath: join(tmpRoot, 'missing-directives.md'),
         projectsIndexDir: join(tmpRoot, 'missing-projects'),
+        // Brain is on by default and would contribute its section (that's
+        // its job) — this test is about the file-based layers.
+        brain: { enabled: false },
       }),
     ).toBe('');
   });
@@ -91,6 +94,7 @@ describe('buildAgentPersonaText', () => {
         soulPath: join(tmpRoot, 'no-soul.md'),
         directivesPath: join(tmpRoot, 'no-directives.md'),
         projectsIndexDir: projectsDir,
+        brain: { enabled: false },
       }),
     ).toBe('');
   });
