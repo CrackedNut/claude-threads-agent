@@ -12,6 +12,7 @@ export {
   approvePendingPlan,
   queueMessage,
   steerSession,
+  importContext,
 
   // Directory management
   changeDirectory,

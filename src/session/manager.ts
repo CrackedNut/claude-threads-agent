@@ -1151,6 +1151,16 @@ export class SessionManager extends EventEmitter {
   }
 
   /**
+   * `!import` in a running session: deliver a past conversation's transcript
+   * as a follow-up (immediate when idle, queued when mid-turn).
+   */
+  async importContext(threadId: string, ref: string, username: string): Promise<void> {
+    const session = this.findSessionByThreadId(threadId);
+    if (!session) return;
+    await commands.importContext(session, ref, username);
+  }
+
+  /**
    * Arm loop mode (`!loop <goal>`) on a running session: auto-continue at
    * every turn boundary until Claude signals completion or the cap hits.
    */

@@ -90,6 +90,13 @@ export interface InitialSessionOptions {
     goal: string;
     maxTurns: number;
   };
+  /**
+   * Seed the new session with a past conversation's transcript
+   * (`!import [last|session-id]`). "last" = most recent archived session.
+   * Resolution failures post a warning and the session starts without the
+   * imported context.
+   */
+  importSessionRef?: string;
 }
 
 /**

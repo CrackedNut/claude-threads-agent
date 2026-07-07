@@ -171,6 +171,15 @@ export const COMMAND_REGISTRY: CommandDefinition[] = [
     worksInFirstMessage: true,
   },
   {
+    command: 'import',
+    description: 'Carry a previous conversation into this one — seeds the session with that chat\'s transcript ("!import last" = most recent chat, or a session id from !search)',
+    args: '[last|session-id] [prompt]',
+    category: 'session',
+    audience: 'user',
+    claudeNotes: 'User-only context handoff — do not invoke',
+    worksInFirstMessage: true,
+  },
+  {
     command: 'approve',
     description: 'Approve pending plan (alternative to 👍 reaction)',
     category: 'session',

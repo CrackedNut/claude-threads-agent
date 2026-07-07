@@ -81,6 +81,11 @@ export interface InitialSessionOptions {
     goal: string;
     maxTurns: number;
   };
+  /**
+   * Seed the new session with a past conversation's transcript
+   * (`!import [last|session-id]`). "last" = most recent archived session.
+   */
+  importSessionRef?: string;
 }
 
 /** Result of command execution */

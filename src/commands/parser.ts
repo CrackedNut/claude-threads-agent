@@ -223,6 +223,8 @@ const STACKABLE_PATTERNS: Array<[string, RegExp, number, number]> = [
   // by a max-turns integer); the handler re-emits the goal as the prompt.
   // `s` flag: goals can span lines.
   ['loop', /^!loop\s+(.+)$/is, 1, -1],
+  // !import [ref] [prompt] — args parsed by the handler (ref vs prompt).
+  ['import', /^!import(?:\s+([\s\S]*))?$/i, 1, -1],
 ];
 
 /**

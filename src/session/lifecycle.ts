@@ -40,6 +40,7 @@ import type { SessionContext } from '../operations/session-context/index.js';
 import { suggestSessionMetadata } from '../operations/suggestions/title.js';
 import { suggestSessionTags } from '../operations/suggestions/tag.js';
 import { withLoopDirective } from '../operations/loop/index.js';
+import { resolveSessionRef, readArchiveTranscript, buildImportContextBlock } from '../persistence/archive-search.js';
 import { MessageManager, PostTracker } from '../operations/index.js';
 import {
   getThreadMessagesForContext,
@@ -1149,13 +1150,32 @@ export async function startSession(
     return;
   }
 
+  // `!import`: seed the session with a past conversation's transcript.
+  // Failures warn and continue — a missing archive shouldn't kill the start.
+  let importBlock: string | undefined;
+  if (initialOptions?.importSessionRef !== undefined) {
+    const resolved = resolveSessionRef(initialOptions.importSessionRef, {
+      excludeSessionId: claudeSessionId,
+    });
+    const transcript = resolved.ok
+      ? readArchiveTranscript({ sessionId: resolved.sessionId, maxChars: 6000 })
+      : resolved;
+    if (transcript.ok) {
+      importBlock = buildImportContextBlock(transcript.content);
+      await post(session, 'info', `📥 Imported context from a previous conversation.`);
+    } else {
+      await post(session, 'warning', `⚠️ Couldn't import context: ${transcript.reason}. Starting fresh.`);
+    }
+  }
+
   // Build message content. Loop-mode sessions get the autonomy directive
   // attached to the goal prompt (display fields like firstPrompt keep the
   // raw goal — the directive is Claude-facing plumbing).
   const uploadDir = getSessionUploadDir(session.platformId, session.threadId);
-  const promptToSend = session.loopState
+  const basePrompt = session.loopState
     ? withLoopDirective(options.prompt, session.loopState)
     : options.prompt;
+  const promptToSend = importBlock ? `${importBlock}\n\n${basePrompt}` : basePrompt;
   const { content, skipped } = await ctx.ops.buildMessageContent(promptToSend, session.platform, uploadDir, options.files);
   const messageText = content;
 

@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.7] - 2026-07-07
+
+### Added
+- **`!import` — carry a conversation into another chat.** `@bot !import last <prompt>` starts a session seeded with the transcript of your most recent chat; `!import <session-id>` (id from `!search` hits) pulls a specific one. Works mid-session too — the transcript arrives as a follow-up (queued if Claude is mid-turn). Imported content is framed as background data with a staleness warning, not as instructions. Resolution failures warn and start fresh instead of blocking the session.
+
 ## [2.2.6] - 2026-07-07
 
 ### Added

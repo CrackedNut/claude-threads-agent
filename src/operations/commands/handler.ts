@@ -68,7 +68,7 @@ import {
   resolveCollaborators,
 } from '../../commands/system-prompt-generator.js';
 import { isValidGitHubNoreplyEmail } from '../../persistence/github-emails-store.js';
-import { searchArchive, formatArchiveHits, type ArchiveScope } from '../../persistence/archive-search.js';
+import { searchArchive, formatArchiveHits, resolveSessionRef, readArchiveTranscript, buildImportContextBlock, type ArchiveScope } from '../../persistence/archive-search.js';
 
 const log = createLogger('commands');
 const sessionLog = createSessionLog(log);
@@ -298,6 +298,34 @@ export async function queueMessage(
     `🕓 ${formatter.formatBold('Queued')} by ${formatter.formatUserMention(username)} — ${pending} pending. Delivered when Claude finishes.`,
   );
   sessionLog(session).info(`🕓 !queue buffered by @${username} (${pending} pending)`);
+}
+
+/**
+ * `!import` in a running session: pull a past conversation's transcript and
+ * deliver it as a follow-up (immediately when Claude is idle, queued when
+ * mid-turn — same semantics as `!queue`).
+ */
+export async function importContext(
+  session: Session,
+  ref: string,
+  username: string,
+): Promise<void> {
+  const formatter = session.platform.getFormatter();
+  const resolved = resolveSessionRef(ref, { excludeSessionId: session.claudeSessionId });
+  const transcript = resolved.ok
+    ? readArchiveTranscript({ sessionId: resolved.sessionId, maxChars: 6000 })
+    : resolved;
+  if (!transcript.ok) {
+    await post(session, 'warning', `⚠️ Couldn't import context: ${transcript.reason}`);
+    return;
+  }
+  session.threadLogger?.logCommand('import', ref, username);
+  await post(
+    session,
+    'info',
+    `📥 ${formatter.formatBold('Context imported')} by ${formatter.formatUserMention(username)} from a previous conversation.`,
+  );
+  await queueMessage(session, buildImportContextBlock(transcript.content), username);
 }
 
 /**

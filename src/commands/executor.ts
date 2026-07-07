@@ -203,6 +203,36 @@ const handleLoop: CommandHandler = async (ctx, args) => {
 };
 
 /**
+ * Handle !import command — cross-chat context handoff.
+ *
+ * `!import last` (or no ref) pulls the most recent archived session;
+ * `!import <session-id-or-prefix>` pulls a specific one (ids come from
+ * `!search` hits). First message: the transcript seeds the new session's
+ * prompt. In-session: the transcript is delivered as a follow-up.
+ */
+const handleImport: CommandHandler = async (ctx, args) => {
+  const trimmed = args?.trim() ?? '';
+  // A leading "last" or id-looking token (hex/dash, 6+ chars) is the session
+  // ref; everything after it is the prompt. No such token → ref defaults to
+  // "last" and the whole text is the prompt.
+  const m = trimmed.match(/^(last|[0-9a-fA-F][0-9a-fA-F-]{5,36})(?:\s+([\s\S]*))?$/);
+  const ref = m ? m[1] : 'last';
+  const promptText = ((m ? m[2] : trimmed) ?? '').trim();
+
+  if (ctx.commandContext === 'first-message') {
+    return {
+      sessionOptions: { importSessionRef: ref },
+      remainingText: promptText || 'Continue from the imported context above.',
+      continueProcessing: true,
+    };
+  }
+
+  if (!ctx.isAllowed) return { handled: true };
+  await ctx.sessionManager.importContext(ctx.threadId, ref, ctx.username);
+  return { handled: true };
+};
+
+/**
  * Handle !escape command.
  */
 const handleEscape: CommandHandler = async (ctx) => {
@@ -744,6 +774,7 @@ handlers.set('escape', handleEscape);
 handlers.set('queue', handleQueue);
 handlers.set('steer', handleSteer);
 handlers.set('loop', handleLoop);
+handlers.set('import', handleImport);
 handlers.set('approve', handleApprove);
 handlers.set('invite', handleInvite);
 handlers.set('kick', handleKick);

@@ -315,3 +315,65 @@ describe('readArchiveTranscript', () => {
     expect(res.content).toContain('chars omitted');
   });
 });
+
+// =============================================================================
+// resolveSessionRef
+// =============================================================================
+
+import { resolveSessionRef, buildImportContextBlock } from './archive-search.js';
+
+describe('resolveSessionRef', () => {
+  const OLD = 'aaaa1111-0000-0000-0000-000000000000';
+  const NEW = 'bbbb2222-0000-0000-0000-000000000000';
+
+  function writeTwoSessions() {
+    writeJsonl(join(tmpRoot, 'mm', `${OLD}.jsonl`), [
+      lifecycleStart(1000, OLD, 't-old'),
+      userMessageEntry(1001, OLD, 'xrxh', 'old work'),
+    ]);
+    // Write second file later so its mtime is newer.
+    writeJsonl(join(tmpRoot, 'mm', `${NEW}.jsonl`), [
+      lifecycleStart(2000, NEW, 't-new'),
+      userMessageEntry(2001, NEW, 'xrxh', 'new work'),
+    ]);
+  }
+
+  test('"last" resolves to the most recently written session', () => {
+    writeTwoSessions();
+    const res = resolveSessionRef('last', { archiveDir: tmpRoot });
+    expect(res).toEqual({ ok: true, sessionId: NEW });
+  });
+
+  test('empty ref behaves like "last"', () => {
+    writeTwoSessions();
+    const res = resolveSessionRef(undefined, { archiveDir: tmpRoot });
+    expect(res).toEqual({ ok: true, sessionId: NEW });
+  });
+
+  test('excludeSessionId keeps a session from importing itself', () => {
+    writeTwoSessions();
+    const res = resolveSessionRef('last', { archiveDir: tmpRoot, excludeSessionId: NEW });
+    expect(res).toEqual({ ok: true, sessionId: OLD });
+  });
+
+  test('prefix resolves to the matching session', () => {
+    writeTwoSessions();
+    const res = resolveSessionRef('aaaa1111', { archiveDir: tmpRoot });
+    expect(res).toEqual({ ok: true, sessionId: OLD });
+  });
+
+  test('no archive → clean failure', () => {
+    const res = resolveSessionRef('last', { archiveDir: tmpRoot });
+    expect(res.ok).toBe(false);
+  });
+});
+
+describe('buildImportContextBlock', () => {
+  test('frames the transcript as background data, not instructions', () => {
+    const block = buildImportContextBlock('Transcript of session x:\n@u: hi');
+    expect(block).toContain('Imported context');
+    expect(block).toContain('not instructions');
+    expect(block).toContain('@u: hi');
+    expect(block).toContain('[End of imported context.]');
+  });
+});
