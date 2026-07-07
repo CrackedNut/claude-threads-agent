@@ -245,3 +245,73 @@ describe('formatArchiveHits', () => {
     expect(out).toContain('Archive matches for `pizza` (1)');
   });
 });
+
+// =============================================================================
+// readArchiveTranscript
+// =============================================================================
+
+import { readArchiveTranscript } from './archive-search.js';
+
+describe('readArchiveTranscript', () => {
+  const SESSION = 'abcd1234-5678-90ab-cdef-111122223333';
+
+  function writeSession(platformId = 'mm-test', sessionId = SESSION) {
+    writeJsonl(join(tmpRoot, platformId, `${sessionId}.jsonl`), [
+      lifecycleStart(1000, sessionId, 'thread-1'),
+      userMessageEntry(2000, sessionId, 'xrxh', 'build the scraper'),
+      assistantToolUseEvent(3000, sessionId, 'Bash', { command: 'ls' }),
+      assistantToolUseEvent(3500, sessionId, 'Bash', { command: 'cat x' }),
+      assistantToolUseEvent(3600, sessionId, 'Edit', { file_path: '/x' }),
+      assistantTextEvent(4000, sessionId, 'Scraper built and tested.'),
+    ]);
+  }
+
+  test('replays user + assistant lines and collapses tool calls', () => {
+    writeSession();
+    const res = readArchiveTranscript({ sessionId: SESSION, archiveDir: tmpRoot });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.content).toContain('@xrxh: build the scraper');
+    expect(res.content).toContain('claude: Scraper built and tested.');
+    expect(res.content).toContain('[tools: Bash ×2, Edit]');
+    expect(res.content).toContain('session start');
+  });
+
+  test('accepts the 8-char prefix shown in search_archive hits', () => {
+    writeSession();
+    const res = readArchiveTranscript({ sessionId: SESSION.slice(0, 8), archiveDir: tmpRoot });
+    expect(res.ok).toBe(true);
+  });
+
+  test('rejects an ambiguous prefix with candidates listed', () => {
+    writeSession('mm-test', 'abcd1234-aaaa-0000-0000-000000000000');
+    writeSession('mm-test', 'abcd1234-bbbb-0000-0000-000000000000');
+    const res = readArchiveTranscript({ sessionId: 'abcd1234', archiveDir: tmpRoot });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.reason).toContain('ambiguous');
+  });
+
+  test('unknown session id fails cleanly', () => {
+    const res = readArchiveTranscript({ sessionId: 'ffffffff', archiveDir: tmpRoot });
+    expect(res.ok).toBe(false);
+  });
+
+  test('elides the middle when over budget, keeping head and tail', () => {
+    const lines: object[] = [lifecycleStart(1000, SESSION, 'thread-1')];
+    lines.push(userMessageEntry(1500, SESSION, 'xrxh', 'GOAL: build the thing'));
+    for (let i = 0; i < 200; i++) {
+      lines.push(assistantTextEvent(2000 + i, SESSION, `progress step ${i} ${'x'.repeat(80)}`));
+    }
+    lines.push(assistantTextEvent(9000, SESSION, 'FINAL: done and verified'));
+    writeJsonl(join(tmpRoot, 'mm-test', `${SESSION}.jsonl`), lines);
+
+    const res = readArchiveTranscript({ sessionId: SESSION, archiveDir: tmpRoot, maxChars: 3000 });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.content.length).toBeLessThan(3600); // header + budget + elision marker
+    expect(res.content).toContain('GOAL: build the thing');
+    expect(res.content).toContain('FINAL: done and verified');
+    expect(res.content).toContain('chars omitted');
+  });
+});

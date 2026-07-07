@@ -430,10 +430,14 @@ export function createThreadLogger(
  * Clean up old log files based on retention policy.
  * Deletes log files older than retentionDays.
  *
- * @param retentionDays - Number of days to keep logs (default: 30)
+ * @param retentionDays - Days to keep logs. `0` (the default) means keep
+ *   FOREVER — the archive is the agent's long-term chat memory
+ *   (`search_archive` / `read_archive`), so deletion is opt-in via
+ *   `threadLogs.retentionDays`.
  * @returns Number of files deleted
  */
-export function cleanupOldLogs(retentionDays: number = 30): number {
+export function cleanupOldLogs(retentionDays: number = 0): number {
+  if (retentionDays <= 0) return 0; // keep forever
   const cutoffMs = Date.now() - (retentionDays * 24 * 60 * 60 * 1000);
   let deletedCount = 0;
 

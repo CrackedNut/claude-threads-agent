@@ -4,12 +4,13 @@
  * Reads `~/.claude-threads/logs/{platformId}/{claudeSessionId}.jsonl` files
  * (written by `ThreadLogger`) and returns matches against user messages and
  * Claude assistant text blocks. No FTS — case-insensitive substring is good
- * enough for chat-volume archives at the retention window the bot enforces
- * (default 30 days; configurable via `threadLogs.retentionDays`).
+ * enough for chat-volume archives (logs are kept forever by default;
+ * `threadLogs.retentionDays` opts into time-based deletion).
  *
  * Used by:
  *   - `!search <query>` command — surfaces hits in the current thread
  *   - `search_archive` MCP tool — lets Claude grep its own history mid-task
+ *   - `read_archive` MCP tool — replays one session as a condensed transcript
  *
  * Both callers scope by platform/thread when they can; cross-thread search
  * is opt-in (`scope: 'platform'` or `'all'`) so chat content from another
@@ -299,6 +300,140 @@ export function searchArchive(opts: ArchiveSearchOptions): ArchiveHit[] {
   // Newest hit first.
   hits.sort((a, b) => b.ts - a.ts);
   return hits;
+}
+
+// =============================================================================
+// Transcript read-back — recall a whole past session, not just snippets
+// =============================================================================
+
+export interface ArchiveTranscriptOptions {
+  /** Claude session id — full, or a unique prefix (search hits show 8 chars). */
+  sessionId: string;
+  /** Narrow the scan to one platform dir. Default: all platforms. */
+  platformId?: string;
+  /** Character budget for the transcript. Default 8000, max 30000. */
+  maxChars?: number;
+  /** Override the archive root (tests). */
+  archiveDir?: string;
+}
+
+export type ArchiveTranscriptResult =
+  | { ok: true; content: string }
+  | { ok: false; reason: string };
+
+const TRANSCRIPT_DEFAULT_CHARS = 8000;
+const TRANSCRIPT_MAX_CHARS = 30000;
+
+function fmtTime(ts: number): string {
+  return ts ? new Date(ts).toISOString().replace('T', ' ').slice(5, 16) : '??-?? ??:??';
+}
+
+/**
+ * Read one archived session back as a condensed conversation transcript:
+ * user messages and assistant text verbatim, tool calls collapsed to
+ * `[tools: A, B ×3]` markers. When the transcript exceeds the budget, the
+ * middle is elided (head kept for the goal, tail kept for the outcome —
+ * both ends matter more than the grind in between).
+ *
+ * This is the "recall" half of the archive pair: `searchArchive` finds the
+ * session, `readArchiveTranscript` replays it.
+ */
+export function readArchiveTranscript(opts: ArchiveTranscriptOptions): ArchiveTranscriptResult {
+  const wanted = opts.sessionId?.trim();
+  if (!wanted) return { ok: false, reason: 'sessionId must be non-empty' };
+
+  const archiveDir = opts.archiveDir ?? DEFAULT_ARCHIVE_DIR;
+  const candidates = collectFiles(archiveDir, opts.platformId ? 'platform' : 'all', opts.platformId);
+  const matches = candidates.filter(
+    (f) => f.sessionId === wanted || f.sessionId.startsWith(wanted),
+  );
+  if (matches.length === 0) {
+    return { ok: false, reason: `no archived session matches "${wanted}"` };
+  }
+  if (matches.length > 1 && !matches.some((m) => m.sessionId === wanted)) {
+    const list = matches.slice(0, 5).map((m) => m.sessionId.slice(0, 12)).join(', ');
+    return { ok: false, reason: `ambiguous session prefix "${wanted}" — matches ${matches.length} sessions (${list}…). Give more characters.` };
+  }
+  const file = matches.find((m) => m.sessionId === wanted) ?? matches[0];
+
+  let content: string;
+  try {
+    content = readFileSync(file.path, 'utf8');
+  } catch (err) {
+    return { ok: false, reason: `failed to read archive: ${(err as Error).message}` };
+  }
+
+  const lines: string[] = [];
+  let pendingTools: string[] = [];
+  const flushTools = () => {
+    if (pendingTools.length === 0) return;
+    const counts = new Map<string, number>();
+    for (const t of pendingTools) counts.set(t, (counts.get(t) ?? 0) + 1);
+    const summary = [...counts.entries()]
+      .map(([name, n]) => (n > 1 ? `${name} ×${n}` : name))
+      .join(', ');
+    lines.push(`[tools: ${summary}]`);
+    pendingTools = [];
+  };
+
+  for (const raw of content.split('\n')) {
+    if (!raw) continue;
+    let entry: Record<string, unknown>;
+    try {
+      entry = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    const ts = typeof entry.ts === 'number' ? entry.ts : 0;
+
+    if (entry.type === 'lifecycle') {
+      flushTools();
+      const details = entry.details as Record<string, unknown> | undefined;
+      const extras = [entry.username, details?.workingDir].filter(Boolean).join(' · ');
+      lines.push(`[${fmtTime(ts)}] — session ${String(entry.action)}${extras ? ` (${extras})` : ''}`);
+      continue;
+    }
+    if (entry.type === 'user_message') {
+      flushTools();
+      const who = typeof entry.username === 'string' ? entry.username : 'user';
+      const text = typeof entry.message === 'string' ? entry.message : '';
+      if (text) lines.push(`[${fmtTime(ts)}] @${who}: ${text}`);
+      continue;
+    }
+    if (entry.type === 'claude_event') {
+      const event = entry.event as { message?: { content?: Array<Record<string, unknown>> } } | undefined;
+      const blocks = event?.message?.content;
+      if (!Array.isArray(blocks)) continue;
+      for (const block of blocks) {
+        if (!block || typeof block !== 'object') continue;
+        if (block.type === 'tool_use' && typeof block.name === 'string') {
+          pendingTools.push(block.name);
+        } else if (typeof block.text === 'string' && block.text.trim()) {
+          flushTools();
+          lines.push(`[${fmtTime(ts)}] claude: ${block.text.trim()}`);
+        }
+      }
+    }
+  }
+  flushTools();
+
+  if (lines.length === 0) {
+    return { ok: false, reason: `session ${file.sessionId.slice(0, 12)} has no conversation content` };
+  }
+
+  const header = `Transcript of session ${file.sessionId} (platform ${file.platformId}):\n`;
+  let body = lines.join('\n');
+  const budget = Math.min(Math.max(opts.maxChars ?? TRANSCRIPT_DEFAULT_CHARS, 500), TRANSCRIPT_MAX_CHARS);
+  if (body.length > budget) {
+    const headChars = Math.floor(budget * 0.3);
+    const tailChars = budget - headChars;
+    const omitted = body.length - headChars - tailChars;
+    body =
+      body.slice(0, headChars) +
+      `\n… [${omitted} chars omitted — raise max_chars or search within the session] …\n` +
+      body.slice(body.length - tailChars);
+  }
+  return { ok: true, content: header + body };
 }
 
 /**

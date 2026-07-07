@@ -405,4 +405,12 @@ describe('cleanupOldLogs', () => {
     const deleted = cleanupOldLogs(30);
     expect(deleted).toBeGreaterThanOrEqual(0);
   });
+
+  it('retentionDays 0 (the default) keeps everything — deletes nothing', () => {
+    // 0 = keep forever: the archive doubles as the agent's long-term chat
+    // memory (search_archive / read_archive), so deletion must be opt-in.
+    expect(cleanupOldLogs(0)).toBe(0);
+    expect(cleanupOldLogs()).toBe(0);
+    expect(cleanupOldLogs(-5)).toBe(0);
+  });
 });

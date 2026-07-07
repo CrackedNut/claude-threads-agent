@@ -576,7 +576,9 @@ async function startWithoutDaemon() {
   // Pass the resolved permission mode string (not the legacy boolean) so the
   // manager tracks all three modes correctly.
   const threadLogsEnabled = config.threadLogs?.enabled ?? true;
-  const threadLogsRetentionDays = config.threadLogs?.retentionDays ?? 30;
+  // 0 = keep forever (the default): the archive is the agent's long-term
+  // chat memory (search_archive / read_archive). Deletion is opt-in.
+  const threadLogsRetentionDays = config.threadLogs?.retentionDays ?? 0;
   const session = new SessionManager(
     workingDir,
     initialPermissionMode,

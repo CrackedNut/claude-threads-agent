@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.6] - 2026-07-07
+
+### Added
+- **`read_archive` MCP tool — replay past sessions.** Completes the recall pair: `search_archive` finds where something was discussed, `read_archive` replays that session as a condensed transcript (user + assistant text verbatim, tool calls collapsed to `[tools: Bash ×2, Edit]` markers, middle elided over budget). Takes the 8-char session prefix straight from a search hit. The system prompt now teaches the agent to recall past conversations instead of re-asking.
+
+### Changed
+- **Thread logs are now kept forever by default.** The archive doubles as the agent's long-term chat memory, so the 30-day auto-delete default is gone (`threadLogs.retentionDays: 0` = keep forever). Set a positive `retentionDays` to opt back into time-based deletion.
+
 ## [2.2.5] - 2026-07-07
 
 ### Added

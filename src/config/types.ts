@@ -64,7 +64,10 @@ export interface PlatformOverhead {
  */
 export interface ThreadLogsConfig {
   enabled?: boolean;        // Default: true
-  retentionDays?: number;   // Default: 30 - days to keep logs after session ends
+  // Days to keep logs. Default 0 = keep FOREVER — the archive doubles as the
+  // agent's long-term chat memory (search_archive / read_archive tools).
+  // Set a positive number to re-enable time-based deletion.
+  retentionDays?: number;
 }
 
 /**
