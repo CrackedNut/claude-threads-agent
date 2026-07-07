@@ -73,6 +73,14 @@ export interface InitialSessionOptions {
    * initial prompt (from `!thread <topic> -history`). Default: fresh start.
    */
   threadIncludeHistory?: boolean;
+  /**
+   * Arm loop mode from the first message (`!loop <goal>`): the session
+   * auto-continues at every turn boundary until the goal completes.
+   */
+  loop?: {
+    goal: string;
+    maxTurns: number;
+  };
 }
 
 /** Result of command execution */

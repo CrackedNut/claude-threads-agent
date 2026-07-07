@@ -1947,6 +1947,35 @@ describe('handleMessage', () => {
       expect(errorCall).toBeDefined();
     });
 
+    test('!loop in the first message arms loop mode with the goal as prompt', async () => {
+      (session.findChannelSession as any).mockImplementation(() => undefined);
+      (session.registry.getPersistedByThreadId as any).mockImplementation(() => undefined);
+      (client.isBotMentioned as any).mockImplementation(() => true);
+      (client.extractPrompt as any).mockImplementation(() => '!loop 10 ship the feature');
+      (client.isUserAllowed as any).mockImplementation(() => true);
+
+      const post: PlatformPost = {
+        id: 'p-loop',
+        rootId: '',
+        channelId: 'c-9',
+        userId: 'u-1',
+        message: '@bot !loop 10 ship the feature',
+        platformId: 'test-platform',
+        createAt: Date.now(),
+      };
+      const user: PlatformUser = { id: 'u-1', username: 'allowed-user', displayName: 'Alice' };
+      (client.getHomeChannelId as any).mockImplementation(() => post.channelId);
+
+      await handleMessage(client, session, post, user, options);
+
+      expect(session.startSession).toHaveBeenCalled();
+      const startArgs = (session.startSession as any).mock.calls[0];
+      // startSession(options, username, threadRoot, platformId, displayName, triggeringPostId, initialOptions)
+      expect(startArgs[0].prompt).toBe('ship the feature');
+      const initialOptions = startArgs[6];
+      expect(initialOptions.loop).toEqual({ goal: 'ship the feature', maxTurns: 10 });
+    });
+
     test('!thread inside an existing thread posts a hint and starts normally', async () => {
       (session.registry.findByThreadId as any).mockImplementation(() => undefined);
       (session.registry.getPersistedByThreadId as any).mockImplementation(() => undefined);

@@ -219,6 +219,10 @@ const STACKABLE_PATTERNS: Array<[string, RegExp, number, number]> = [
   // !thread takes no args; everything after it is the remainder (next
   // stacked command or the actual prompt). argGroup=-1 → no args.
   ['thread', /^!thread(?:\s+(.*))?$/i, -1, 1],
+  // !loop <goal> — everything after !loop is the args (goal, optionally led
+  // by a max-turns integer); the handler re-emits the goal as the prompt.
+  // `s` flag: goals can span lines.
+  ['loop', /^!loop\s+(.+)$/is, 1, -1],
 ];
 
 /**

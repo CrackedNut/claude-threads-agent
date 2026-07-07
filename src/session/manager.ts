@@ -27,6 +27,7 @@ import { SessionMonitor } from '../operations/monitor/index.js';
 import * as streaming from '../operations/streaming/index.js';
 import * as events from '../operations/events/index.js';
 import * as commands from '../operations/commands/index.js';
+import * as loop from '../operations/loop/index.js';
 import * as lifecycle from './lifecycle.js';
 import { CHAT_PLATFORM_PROMPT } from './lifecycle.js';
 import * as worktreeModule from '../operations/worktree/index.js';
@@ -682,6 +683,7 @@ export class SessionManager extends EventEmitter {
       claudeAccountId: session.claudeAccountId,
       sessionHeaderMode: session.sessionHeaderMode,
       queuedUserMessages: session.queuedUserMessages,
+      loopState: session.loopState,
       mode: session.mode,
       channelId: session.channelId,
       modelOverride: session.modelOverride,
@@ -1146,6 +1148,30 @@ export class SessionManager extends EventEmitter {
     const session = this.findSessionByThreadId(threadId);
     if (!session) return;
     await commands.steerSession(session, message, username);
+  }
+
+  /**
+   * Arm loop mode (`!loop <goal>`) on a running session: auto-continue at
+   * every turn boundary until Claude signals completion or the cap hits.
+   */
+  async armLoop(threadId: string, goal: string, maxTurns: number, username: string): Promise<void> {
+    const session = this.findSessionByThreadId(threadId);
+    if (!session) return;
+    await loop.armLoop(session, goal, maxTurns, username, this.getContext());
+  }
+
+  /** Disarm loop mode (`!loop stop`). */
+  async stopLoop(threadId: string, username: string): Promise<void> {
+    const session = this.findSessionByThreadId(threadId);
+    if (!session) return;
+    await loop.stopLoop(session, username, this.getContext());
+  }
+
+  /** Report loop state (`!loop status`). */
+  async loopStatus(threadId: string): Promise<void> {
+    const session = this.findSessionByThreadId(threadId);
+    if (!session) return;
+    await loop.loopStatus(session);
   }
 
   async approvePendingPlan(threadId: string, username: string): Promise<void> {

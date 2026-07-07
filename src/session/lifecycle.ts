@@ -39,6 +39,7 @@ import { postResumeCoAuthorOnboarding } from '../operations/commands/handler.js'
 import type { SessionContext } from '../operations/session-context/index.js';
 import { suggestSessionMetadata } from '../operations/suggestions/title.js';
 import { suggestSessionTags } from '../operations/suggestions/tag.js';
+import { withLoopDirective } from '../operations/loop/index.js';
 import { MessageManager, PostTracker } from '../operations/index.js';
 import {
   getThreadMessagesForContext,
@@ -1048,6 +1049,10 @@ export async function startSession(
     // `!thread <topic>` names the session up front; the auto-title metadata
     // pass skips sessions that already have a title.
     sessionTitle: initialOptions?.threadTopic?.substring(0, 80) || undefined,
+    // `!loop <goal>` in the first message arms loop mode from turn one.
+    loopState: initialOptions?.loop
+      ? { goal: initialOptions.loop.goal, maxTurns: initialOptions.loop.maxTurns, iteration: 0 }
+      : undefined,
     startedBy: username,
     startedByDisplayName: displayName,
     startedAt: new Date(),
@@ -1144,9 +1149,14 @@ export async function startSession(
     return;
   }
 
-  // Build message content
+  // Build message content. Loop-mode sessions get the autonomy directive
+  // attached to the goal prompt (display fields like firstPrompt keep the
+  // raw goal — the directive is Claude-facing plumbing).
   const uploadDir = getSessionUploadDir(session.platformId, session.threadId);
-  const { content, skipped } = await ctx.ops.buildMessageContent(options.prompt, session.platform, uploadDir, options.files);
+  const promptToSend = session.loopState
+    ? withLoopDirective(options.prompt, session.loopState)
+    : options.prompt;
+  const { content, skipped } = await ctx.ops.buildMessageContent(promptToSend, session.platform, uploadDir, options.files);
   const messageText = content;
 
   // Check if this is a mid-thread start (replyToPostId means we're replying in an existing thread)
@@ -1379,6 +1389,9 @@ export async function resumeSession(
     // the next `result` event after Claude finishes its current turn (or by
     // the explicit follow-up if the resumed session is idle).
     queuedUserMessages: state.queuedUserMessages ? [...state.queuedUserMessages] : undefined,
+    // Restore an armed loop so it survives the restart. Missing in old
+    // persisted records → no loop (defensive default).
+    loopState: state.loopState ? { ...state.loopState } : undefined,
     // Channel-mode identity. Missing in old persisted records → thread-mode
     // behavior preserved exactly. Channel-mode sessions are shared across
     // all allowed users in the channel; the persisted `channelId` is what

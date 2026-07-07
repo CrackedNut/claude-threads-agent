@@ -17,6 +17,7 @@ import { generateHelpMessage } from './help-generator.js';
 import { getReleaseNotes, formatReleaseNotes } from '../changelog.js';
 import { VERSION } from '../version.js';
 import { buildChannelHistoryContext } from '../operations/channel-history.js';
+import { parseLoopArgs } from '../operations/loop/index.js';
 
 // =============================================================================
 // Command Handler Registry
@@ -148,6 +149,56 @@ const handleSteer: CommandHandler = async (ctx, args) => {
     return { handled: true };
   }
   await ctx.sessionManager.steerSession(ctx.threadId, args.trim(), ctx.username);
+  return { handled: true };
+};
+
+/**
+ * Handle !loop command — autonomous goal loop.
+ *
+ * First message: `@bot !loop <goal>` arms loop mode on the new session; the
+ * goal doubles as the session's initial prompt. In-session: `!loop <goal>`
+ * arms (kicking immediately if Claude is idle), `!loop stop` disarms,
+ * `!loop status` reports. `!loop <n> <goal>` caps auto-continues at n.
+ */
+const handleLoop: CommandHandler = async (ctx, args) => {
+  const trimmed = args?.trim();
+  const sub = trimmed?.toLowerCase();
+
+  if (ctx.commandContext === 'first-message') {
+    // stop/status make no sense before a session exists; empty goal falls
+    // through to the "mention me with your request" path.
+    if (!trimmed || sub === 'stop' || sub === 'off' || sub === 'status') {
+      return { handled: false };
+    }
+    const { goal, maxTurns } = parseLoopArgs(trimmed);
+    return {
+      sessionOptions: { loop: { goal, maxTurns } },
+      // The goal IS the session prompt.
+      remainingText: goal,
+      continueProcessing: true,
+    };
+  }
+
+  if (!ctx.isAllowed) return { handled: true };
+
+  if (!trimmed) {
+    await ctx.client.createPost(
+      `❌ Usage: ${ctx.formatter.formatCode('!loop <goal>')} — or ${ctx.formatter.formatCode('!loop stop')} / ${ctx.formatter.formatCode('!loop status')}`,
+      ctx.replyTo,
+    );
+    return { handled: true };
+  }
+  if (sub === 'stop' || sub === 'off') {
+    await ctx.sessionManager.stopLoop(ctx.threadId, ctx.username);
+    return { handled: true };
+  }
+  if (sub === 'status') {
+    await ctx.sessionManager.loopStatus(ctx.threadId);
+    return { handled: true };
+  }
+
+  const { goal, maxTurns } = parseLoopArgs(trimmed);
+  await ctx.sessionManager.armLoop(ctx.threadId, goal, maxTurns, ctx.username);
   return { handled: true };
 };
 
@@ -692,6 +743,7 @@ handlers.set('stop', handleStop);
 handlers.set('escape', handleEscape);
 handlers.set('queue', handleQueue);
 handlers.set('steer', handleSteer);
+handlers.set('loop', handleLoop);
 handlers.set('approve', handleApprove);
 handlers.set('invite', handleInvite);
 handlers.set('kick', handleKick);

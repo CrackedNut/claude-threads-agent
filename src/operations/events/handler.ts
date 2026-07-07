@@ -21,6 +21,7 @@ import { extractPullRequestUrl } from '../../utils/pr-detector.js';
 import { changeDirectory, reportBug } from '../commands/index.js';
 import { buildWorktreeListMessage } from '../worktree/index.js';
 import { trackEvent } from '../bug-report/index.js';
+import { scanLoopSentinels, maybeContinueLoop } from '../loop/index.js';
 import { parseClaudeCommand, removeCommandFromText, isClaudeAllowedCommand } from '../../commands/index.js';
 import { ACK_SEEN_EMOJI, ACK_DONE_EMOJI } from '../../utils/emoji.js';
 
@@ -232,6 +233,8 @@ export function handleEventPostProcessing(
         extractAndUpdatePullRequest(block.text, session, ctx);
         // Detect and execute Claude commands (e.g., !cd)
         detectAndExecuteClaudeCommands(block.text, session, ctx);
+        // Loop mode: watch for LOOP_COMPLETE / LOOP_BLOCKED exit sentinels
+        scanLoopSentinels(session, block.text);
       }
     }
   }
@@ -266,7 +269,12 @@ export function handleEventPostProcessing(
     // it with the jarring "resumed after bot restart" notice). Leave the
     // queue intact — handleExit pauses + persists it, and resume drains it.
     if (!isSessionInterrupted(session)) {
-      void flushQueuedUserMessages(session, ctx);
+      // Loop mode rides the same turn boundary: queued user messages win the
+      // round (the loop stays armed and re-evaluates at THAT turn's result);
+      // otherwise the loop decides continue / complete / cap.
+      void flushQueuedUserMessages(session, ctx).then((flushed) =>
+        maybeContinueLoop(session, ctx, flushed),
+      );
     }
   }
 
@@ -299,9 +307,9 @@ export function handleEventPostProcessing(
 async function flushQueuedUserMessages(
   session: Session,
   ctx: SessionContext,
-): Promise<void> {
+): Promise<boolean> {
   const queue = session.queuedUserMessages;
-  if (!queue || queue.length === 0) return;
+  if (!queue || queue.length === 0) return false;
   const joined = queue.join('\n\n');
   session.queuedUserMessages = undefined;
   try {
@@ -320,6 +328,7 @@ async function flushQueuedUserMessages(
     // bring the session down on a follow-up dispatch error. The message
     // already lives in the thread log.
   }
+  return true;
 }
 
 // ---------------------------------------------------------------------------

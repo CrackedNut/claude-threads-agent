@@ -162,6 +162,15 @@ export const COMMAND_REGISTRY: CommandDefinition[] = [
     claudeNotes: 'User-only redirect primitive — do not invoke',
   },
   {
+    command: 'loop',
+    description: 'Work autonomously until the goal is done — auto-continues every turn until Claude confirms completion (!loop <n> <goal> sets the cap; !loop stop / status)',
+    args: '<goal>',
+    category: 'session',
+    audience: 'user',
+    claudeNotes: 'User-only autonomy control — do not invoke',
+    worksInFirstMessage: true,
+  },
+  {
     command: 'approve',
     description: 'Approve pending plan (alternative to 👍 reaction)',
     category: 'session',

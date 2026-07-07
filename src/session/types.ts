@@ -81,6 +81,33 @@ export interface InitialSessionOptions {
    * initial context (from `!thread <topic> -history`).
    */
   threadIncludeHistory?: boolean;
+  /**
+   * Arm loop mode from the first message (`!loop <goal> …`): the session
+   * starts with the loop directive attached and auto-continues at every
+   * turn boundary until the goal completes. See `operations/loop`.
+   */
+  loop?: {
+    goal: string;
+    maxTurns: number;
+  };
+}
+
+/**
+ * Loop-mode state (`!loop <goal>`), living on the session while armed and
+ * persisted so a loop survives bot restarts. `sentinel` accumulates during a
+ * streamed turn (set by `scanLoopSentinels`) and is consumed at the turn
+ * boundary by `maybeContinueLoop`.
+ */
+export interface SessionLoopState {
+  goal: string;
+  /** Auto-continues sent so far. */
+  iteration: number;
+  /** Cap on auto-continues before the loop disarms itself. */
+  maxTurns: number;
+  /** Exit signal seen in Claude's output this turn, if any. */
+  sentinel?: 'complete' | 'blocked';
+  /** One-line reason captured from `LOOP_BLOCKED: <reason>`. */
+  blockedReason?: string;
 }
 
 // =============================================================================
@@ -484,6 +511,14 @@ export interface Session {
    * vanish on resume.
    */
   queuedUserMessages?: string[];
+
+  /**
+   * Loop-mode state (`!loop <goal>`). Present = armed: the result-event
+   * pipeline auto-continues the session at every turn boundary until Claude
+   * signals LOOP_COMPLETE / LOOP_BLOCKED or the cap hits. Persisted via
+   * `PersistedSession.loopState` so a loop survives bot restarts.
+   */
+  loopState?: SessionLoopState;
 }
 
 // =============================================================================

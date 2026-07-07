@@ -359,6 +359,63 @@ describe('handleEventPostProcessing', () => {
     expect(handleUserMessage).not.toHaveBeenCalled();
   });
 
+  test('loop mode: result event without a sentinel auto-continues the session', async () => {
+    const handleUserMessage = mock(() => Promise.resolve(true));
+    session.messageManager = {
+      ...(session.messageManager ?? {}),
+      handleUserMessage,
+    } as unknown as typeof session.messageManager;
+    session.loopState = { goal: 'ship it', iteration: 0, maxTurns: 25 };
+
+    handleEventPostProcessing(session, { type: 'result' }, ctx);
+
+    await new Promise(r => setTimeout(r, 0));
+    expect(session.loopState?.iteration).toBe(1);
+    expect(handleUserMessage).toHaveBeenCalledTimes(1);
+    const [message] = (handleUserMessage as ReturnType<typeof mock>).mock.calls[0];
+    expect(message).toContain('LOOP MODE');
+    expect(message).toContain('ship it');
+  });
+
+  test('loop mode: LOOP_COMPLETE in assistant text disarms at the result boundary', async () => {
+    const handleUserMessage = mock(() => Promise.resolve(true));
+    session.messageManager = {
+      ...(session.messageManager ?? {}),
+      handleUserMessage,
+    } as unknown as typeof session.messageManager;
+    session.loopState = { goal: 'ship it', iteration: 2, maxTurns: 25 };
+
+    handleEventPostProcessing(session, {
+      type: 'assistant',
+      message: { content: [{ type: 'text', text: 'All verified.\nLOOP_COMPLETE' }] },
+    } as any, ctx);
+    expect(session.loopState?.sentinel).toBe('complete');
+
+    handleEventPostProcessing(session, { type: 'result' }, ctx);
+
+    await new Promise(r => setTimeout(r, 0));
+    expect(session.loopState).toBeUndefined();
+    expect(handleUserMessage).not.toHaveBeenCalled();
+  });
+
+  test('loop mode: a flushed !queue message takes the round instead of the loop', async () => {
+    const handleUserMessage = mock(() => Promise.resolve(true));
+    session.messageManager = {
+      ...(session.messageManager ?? {}),
+      handleUserMessage,
+    } as unknown as typeof session.messageManager;
+    session.loopState = { goal: 'ship it', iteration: 1, maxTurns: 25 };
+    session.queuedUserMessages = ['check the logs first'];
+
+    handleEventPostProcessing(session, { type: 'result' }, ctx);
+
+    await new Promise(r => setTimeout(r, 0));
+    // Only the queued message went out; the loop stayed armed at 1.
+    expect(handleUserMessage).toHaveBeenCalledTimes(1);
+    expect((handleUserMessage as ReturnType<typeof mock>).mock.calls[0][0]).toBe('check the logs first');
+    expect(session.loopState?.iteration).toBe(1);
+  });
+
   // Regression (2026-06-11): `!steer` interrupts Claude, which emits this
   // final `result` and then EXITS. Flushing the queue here would deliver into
   // the dying process and flip the session to 'active', so the exit kills the

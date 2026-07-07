@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.4] - 2026-07-07
+
+### Added
+- **`!loop <goal>` — autonomous goal loop.** The session keeps working until the goal is actually done: every time a turn ends without Claude confirming completion, the bot auto-sends a continuation (with an autonomy directive: don't stop to ask for clarification — use best judgment). Claude exits the loop with `LOOP_COMPLETE` (verified done) or `LOOP_BLOCKED: <reason>` (genuinely human-only blocker); a cap on auto-continues (default 25, `!loop <n> <goal>` to override) bounds runaways. Works in the first message (`@bot !loop ship the fix`) and in-session; `!loop stop` disarms, `!loop status` reports; an armed loop survives bot restarts. Queued `!queue`/`!steer` messages take priority over the loop's continuation at each turn boundary.
+
 ## [2.2.3] - 2026-07-06
 
 ### Fixed

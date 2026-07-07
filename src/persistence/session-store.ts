@@ -5,6 +5,7 @@ import { createLogger } from '../utils/logger.js';
 import type { PlatformFile } from '../platform/types.js';
 import type { ContextPromptFile } from '../operations/executors/types.js';
 import type { OverheadVisibility } from '../config/types.js';
+import type { SessionLoopState } from '../session/types.js';
 
 const log = createLogger('persist');
 
@@ -111,6 +112,12 @@ export interface PersistedSession {
    * doesn't vanish.
    */
   queuedUserMessages?: string[];
+  /**
+   * Loop-mode state (`!loop <goal>`) if a loop was armed when the bot last
+   * persisted. Optional for backward compatibility. Restored onto
+   * `Session.loopState` at resume so an in-flight loop survives restarts.
+   */
+  loopState?: SessionLoopState;
 }
 
 /**
