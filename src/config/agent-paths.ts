@@ -49,17 +49,17 @@ function firstExisting(candidates: string[], fallback: string): string {
 }
 
 /**
- * Profile-first resolution: a profile's OWN agent file beats the machine-wide
- * legacy locations. Without this, a fresh bot on a machine that has Hermes
- * files would silently inherit another bot's persona — the opposite of what
- * profiles promise. Legacy paths still win in legacy (non-profile) mode and
- * as a fallback when the profile has no such file yet. Lazy getAgentHome()
- * calls (not a module-level const) so tests can vary OPENINTEL_HOME after
- * import.
+ * Profile-scoped resolution: in profile mode, persona files resolve ONLY
+ * inside the profile's own agent/ dir — never to the machine-wide legacy
+ * locations. A fresh bot starts blank instead of silently inheriting another
+ * bot's soul from ~/.hermes (missing files are skipped by the persona
+ * builder, so "blank" is safe). Legacy candidates still apply in legacy
+ * (non-profile) mode. Lazy getAgentHome() calls (not a module-level const)
+ * so tests can vary OPENINTEL_HOME after import.
  */
 function resolveAgentFile(ownRelative: string, legacyCandidates: string[]): string {
   const own = join(getAgentHome(), ownRelative);
-  if (getProfileHome() && existsSync(own)) return own;
+  if (getProfileHome()) return own;
   return firstExisting(legacyCandidates, own);
 }
 

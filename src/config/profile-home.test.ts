@@ -102,4 +102,12 @@ describe('profile-first persona resolution', () => {
   test('brain defaults inside the profile with no legacy fallback', () => {
     expect(resolveBrainDir(undefined)).toBe(join(profile, 'agent', 'brain'));
   });
+
+  test('a FRESH profile (empty agent/) resolves inside itself — never to legacy files', () => {
+    // Regression: with fallback-to-legacy, a brand-new bot on a machine with
+    // ~/.hermes files started life as the other bot until given its own soul.
+    expect(resolveSoulPath(undefined)).toBe(join(profile, 'agent', 'SOUL.md'));
+    expect(resolveDirectivesPath(undefined)).toBe(join(profile, 'agent', 'DIRECTIVES.md'));
+    expect(resolveProjectsDir(undefined)).toBe(join(profile, 'agent', 'projects'));
+  });
 });

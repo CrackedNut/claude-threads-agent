@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-07-08
+
+### Fixed
+- **Fresh profiles start blank, full stop.** v2.3.0 made a profile's own persona files win over legacy machine-wide ones, but an *empty* profile still fell back to `~/.hermes` — a brand-new bot began life as the other bot until given its own SOUL.md. In profile mode, persona paths (soul/directives/projects) now resolve strictly inside the profile's `agent/` dir; missing files are simply skipped. Skills keep the machine-wide fallback on purpose (they're shared capabilities, not identity) — override with `skillsIndex.skillsDir` or a non-empty `<profile>/agent/skills/`.
+
 ## [2.3.0] - 2026-07-08
 
 ### Fixed
