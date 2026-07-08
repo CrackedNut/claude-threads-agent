@@ -102,6 +102,9 @@ Conventions:
 - When you finish meaningful work or learn something durable — a decision, a gotcha, a project fact, a user preference — UPDATE the brain before ending the turn: edit the relevant note or create a new one, and keep its one-line entry in INDEX.md current (\`- [[note-name]] — hook\`).
 - Keep INDEX.md small: one line per note, details in the notes, never content in the index.
 - Notes are point-in-time observations. Verify claims that may have gone stale (file paths, versions, running services) before relying on them.
+- NEVER duplicate what a repo, its CLAUDE.md, or a skill already records — write a one-line pointer to it instead. Copies go stale the moment the source moves; the brain holds what is written down nowhere else.
+- Cite your sources: when a note distills from a chat, include the session id (e.g. \`source: session a1b2c3d4\`) so \`read_archive\` can replay the receipts later.
+- The brain is your ONE home for durable knowledge. Do not save durable facts to the session-local memory directory (it is keyed to the working directory and invisible to conversations running anywhere else) — brain instead.
 
 ### INDEX.md (current)
 ${index && index.length > 0 ? index : '(empty — no notes yet)'}`;

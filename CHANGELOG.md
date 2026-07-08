@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.8] - 2026-07-08
+
+### Changed
+- **Brain conventions tightened.** Three rules added to the second-brain prompt: never duplicate what a repo/CLAUDE.md/skill already records (pointer instead — copies go stale), cite source session ids in notes so `read_archive` can replay the receipts, and route durable knowledge to the brain rather than the CLI's per-working-directory memory folder (which silos facts by cwd).
+
 ## [2.2.7] - 2026-07-07
 
 ### Added

@@ -102,3 +102,12 @@ describe('persona-layer integration', () => {
     expect(existsSync(brainDir)).toBe(false);
   });
 });
+
+describe('brain conventions (v2.2.8)', () => {
+  test('teaches no-duplication, source citation, and brain-over-session-memory', () => {
+    const text = buildBrainText({ brain: { dir: brainDir } });
+    expect(text).toContain('NEVER duplicate');
+    expect(text).toContain('read_archive');
+    expect(text).toContain('session-local memory directory');
+  });
+});
