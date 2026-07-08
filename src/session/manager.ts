@@ -124,6 +124,14 @@ export class SessionManager extends EventEmitter {
   // description. Reads are cached by mtime inside the builder.
   private readonly skillsIndex?: SkillsIndexConfig;
 
+  // Per-platform identity overrides (one daemon, many bots). When a platform
+  // sets its own agentPersona/skillsIndex, sessions on that platform resolve
+  // their persona/brain/skills from it instead of the daemon-global defaults.
+  private readonly platformPersona = new Map<
+    string,
+    { agentPersona?: AgentPersonaConfig; skillsIndex?: SkillsIndexConfig }
+  >();
+
   constructor(
     workingDir: string,
     /**
@@ -191,12 +199,17 @@ export class SessionManager extends EventEmitter {
     platformId: string,
     client: PlatformClient,
     overhead?: Partial<PlatformOverhead>,
+    persona?: { agentPersona?: AgentPersonaConfig; skillsIndex?: SkillsIndexConfig },
   ): void {
     this.platforms.set(platformId, client);
     this.platformOverhead.set(platformId, {
       sessionHeader: overhead?.sessionHeader ?? DEFAULT_OVERHEAD_VISIBILITY,
       stickyMessage: overhead?.stickyMessage ?? DEFAULT_OVERHEAD_VISIBILITY,
     });
+    // Store per-platform identity overrides (only when the platform set one).
+    if (persona && (persona.agentPersona || persona.skillsIndex)) {
+      this.platformPersona.set(platformId, persona);
+    }
     client.on('message', (post, user) => this.handleMessage(platformId, post, user));
     client.on('reaction', (reaction, user) => {
       if (user) {
@@ -225,7 +238,24 @@ export class SessionManager extends EventEmitter {
   removePlatform(platformId: string): void {
     this.platforms.delete(platformId);
     this.platformOverhead.delete(platformId);
+    this.platformPersona.delete(platformId);
     stickyMessage.clearHiddenCleanupTracking(platformId);
+  }
+
+  /**
+   * Resolve the identity (persona + skills) for a platform: the platform's
+   * own override if it set one, else the daemon-global defaults. This is the
+   * seam that lets one daemon host multiple separate-identity bots.
+   */
+  private getPlatformPersona(platformId: string): {
+    agentPersona?: AgentPersonaConfig;
+    skillsIndex?: SkillsIndexConfig;
+  } {
+    const override = this.platformPersona.get(platformId);
+    return {
+      agentPersona: override?.agentPersona ?? this.agentPersona,
+      skillsIndex: override?.skillsIndex ?? this.skillsIndex,
+    };
   }
 
   /**
@@ -384,6 +414,7 @@ export class SessionManager extends EventEmitter {
         sessionHeader: DEFAULT_OVERHEAD_VISIBILITY,
         stickyMessage: DEFAULT_OVERHEAD_VISIBILITY,
       },
+      getPlatformPersona: (pid) => this.getPlatformPersona(pid),
     };
 
     return createSessionContext(config, state, ops);
@@ -1435,8 +1466,7 @@ export class SessionManager extends EventEmitter {
       getThreadMessagesForContext: (s, limit, excludePostId) => contextPrompt.getThreadMessagesForContext(s, limit, excludePostId),
       formatContextForClaude: (messages, summary) => contextPrompt.formatContextForClaude(messages, summary),
       appendSystemPrompt: CHAT_PLATFORM_PROMPT,
-      agentPersona: this.agentPersona,
-      skillsIndex: this.skillsIndex,
+      getPlatformPersona: (pid: string) => this.getPlatformPersona(pid),
       githubEmailsStore: this.githubEmailsStore,
       registerPost: (postId, tid) => this.registerPost(postId, tid),
       updateStickyMessage: () => this.updateStickyMessage(),

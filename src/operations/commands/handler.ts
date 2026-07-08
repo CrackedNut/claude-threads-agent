@@ -551,7 +551,9 @@ export async function changeDirectory(
     session.sessionAllowedUsers,
     CHAT_PLATFORM_PROMPT,
     ctx.state.githubEmailsStore,
-    { agentPersona: ctx.config.agentPersona, skillsIndex: ctx.config.skillsIndex },
+    // Per-platform identity (one daemon, many bots): this bot's own
+    // persona/brain/skills if set, else daemon-global.
+    ctx.ops.getPlatformPersona(session.platformId),
   );
 
   const cliOptions: ClaudeCliOptions = {

@@ -776,3 +776,32 @@ describe('SessionManager', () => {
     });
   });
 });
+
+describe('per-platform identity (one daemon, many bots)', () => {
+  const p = path.join(os.tmpdir(), `pp-sessions-${Date.now()}.json`);
+
+  test('a platform with its own persona overrides; others inherit the daemon-global', () => {
+    const mgr = new SessionManager(
+      '/d', 'bypass', false, 'off', p, true, 0, undefined, undefined,
+      { enabled: true, soulPath: '/global/SOUL.md' },   // daemon-global persona
+      { enabled: true },                                 // daemon-global skills
+      undefined,
+    );
+    const botA = createMockPlatform('botA');
+    const botB = createMockPlatform('botB');
+    // botA carries its OWN identity; botB carries none.
+    mgr.addPlatform('botA', botA as unknown as PlatformClient, undefined, {
+      agentPersona: { enabled: true, soulPath: '/botA/SOUL.md', brain: { dir: '/botA/brain' } },
+    });
+    mgr.addPlatform('botB', botB as unknown as PlatformClient);
+
+    const resolve = (pid: string) => (mgr as any).getPlatformPersona(pid);
+    // botA → its own soul + brain
+    expect(resolve('botA').agentPersona.soulPath).toBe('/botA/SOUL.md');
+    expect(resolve('botA').agentPersona.brain.dir).toBe('/botA/brain');
+    // botB → daemon-global (no override)
+    expect(resolve('botB').agentPersona.soulPath).toBe('/global/SOUL.md');
+    // skills: botA didn't override skills → still global
+    expect(resolve('botA').skillsIndex).toEqual({ enabled: true });
+  });
+});

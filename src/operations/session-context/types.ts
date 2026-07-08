@@ -318,6 +318,16 @@ export interface SessionOperations {
    * explicit settings.
    */
   getPlatformOverhead(platformId: string): PlatformOverhead;
+
+  /**
+   * Resolved identity (persona + skills-index config) for a platform: the
+   * platform's own override if set, else the daemon-global defaults. Used at
+   * session-spawn sites so one daemon can host multiple separate-identity bots.
+   */
+  getPlatformPersona(platformId: string): {
+    agentPersona?: AgentPersonaConfig;
+    skillsIndex?: SkillsIndexConfig;
+  };
 }
 
 // =============================================================================

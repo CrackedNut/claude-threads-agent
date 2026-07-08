@@ -78,6 +78,36 @@ export function resolveProjectsDir(config?: AgentPersonaConfig): string {
   return resolveAgentFile('projects', [join(homedir(), 'agent-memory', 'projects')]);
 }
 
+/**
+ * Expand a per-bot `agent: <dir>` shorthand into full persona + skills config,
+ * so one daemon's config can add a bot with a single line instead of five
+ * explicit paths:
+ *
+ *   platforms:
+ *     - botName: bot2
+ *       agent: ~/openintel/bots/bot2   # → SOUL/DIRECTIVES/projects/brain/skills under here
+ *
+ * Everything lives under `<dir>/`: SOUL.md, DIRECTIVES.md, projects/, brain/,
+ * skills/. Missing files are skipped by the builders, so a fresh dir just
+ * means a blank-slate bot.
+ */
+export function personaFromAgentDir(dir: string): {
+  agentPersona: AgentPersonaConfig;
+  skillsIndex: SkillsIndexConfig;
+} {
+  const base = resolveTilde(dir);
+  return {
+    agentPersona: {
+      enabled: true,
+      soulPath: join(base, 'SOUL.md'),
+      directivesPath: join(base, 'DIRECTIVES.md'),
+      projectsIndexDir: join(base, 'projects'),
+      brain: { dir: join(base, 'brain') },
+    },
+    skillsIndex: { enabled: true, skillsDir: join(base, 'skills') },
+  };
+}
+
 export function resolveBrainDir(config?: AgentPersonaConfig): string {
   if (config?.brain?.dir) return resolveTilde(config.brain.dir);
   // No legacy fallback on purpose — brains are per-profile unless explicitly

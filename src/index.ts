@@ -16,7 +16,8 @@ import {
   type OverheadVisibility,
 } from './config/index.js';
 import type { CliArgs } from './config/index.js';
-import { resolveSessionWorkingDir } from './config/agent-paths.js';
+import { resolveSessionWorkingDir, personaFromAgentDir } from './config/agent-paths.js';
+import type { AgentPersonaConfig, SkillsIndexConfig } from './config/index.js';
 import { runOnboarding } from './onboarding.js';
 import { MattermostClient, SlackClient, DiscordClient, type PlatformClient, type PlatformPost, type PlatformUser } from './platform/index.js';
 import { SessionManager } from './session/index.js';
@@ -40,6 +41,24 @@ import {
 // =============================================================================
 // Platform Factory and Event Wiring
 // =============================================================================
+
+/**
+ * Resolve a platform's per-bot identity for `addPlatform`. Explicit
+ * `agentPersona` / `skillsIndex` win; otherwise the `agent: <dir>` shorthand
+ * expands to a full per-bot identity; otherwise undefined (inherits global).
+ */
+function resolvePlatformPersona(config: PlatformInstanceConfig): {
+  agentPersona?: AgentPersonaConfig;
+  skillsIndex?: SkillsIndexConfig;
+} {
+  if (config.agentPersona || config.skillsIndex) {
+    return { agentPersona: config.agentPersona, skillsIndex: config.skillsIndex };
+  }
+  if (typeof config.agent === 'string' && config.agent.trim()) {
+    return personaFromAgentDir(config.agent);
+  }
+  return {};
+}
 
 /**
  * Create a platform client based on the config type.
@@ -658,7 +677,7 @@ async function startWithoutDaemon() {
         platformConfig.stickyMessage,
         `platforms[${platformConfig.id}].stickyMessage`,
       ),
-    });
+    }, resolvePlatformPersona(platformConfig as PlatformInstanceConfig));
 
     // Wire up platform events
     wirePlatformEvents(platformConfig.id, client, session, ui);

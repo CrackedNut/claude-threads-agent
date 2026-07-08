@@ -167,6 +167,7 @@ function createSessionContext(): SessionContext {
       markClaudeAccountCooling: mock(() => {}),
       getClaudeAccountPoolStatus: mock(() => []),
       getPlatformOverhead: mock(() => ({ sessionHeader: 'full' as const, stickyMessage: 'full' as const })),
+      getPlatformPersona: mock(() => ({})),
     },
   };
 }

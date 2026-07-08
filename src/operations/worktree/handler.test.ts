@@ -173,7 +173,8 @@ function createMockOptions() {
     formatContextForClaude: mockFormatContextForClaude,
     registerPost: mock(() => {}),
     updateStickyMessage: mock(() => Promise.resolve()),
-    githubEmailsStore: { get: mock(() => undefined) },
+    getPlatformPersona: () => ({}),
+      githubEmailsStore: { get: mock(() => undefined) },
   };
 }
 

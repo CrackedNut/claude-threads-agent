@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.3] - 2026-07-08
+
+### Added
+- **One daemon, multiple separate-identity bots.** A single daemon can now host several bots (one per `platforms:` entry), each with its OWN persona, directives, projects, brain, and skills — instead of one identity shared across every platform. Each platform block can carry `agentPersona` / `skillsIndex` overrides, or the one-line shorthand `agent: <dir>` which expands to `SOUL.md` / `DIRECTIVES.md` / `projects/` / `brain/` / `skills/` under that dir. Platforms with no override inherit the daemon-global identity. Sessions, chat archive, and logs were already per-platform; this closes the last shared-state gap, so bots in one daemon are fully isolated from each other.
+
 ## [2.3.2] - 2026-07-08
 
 ### Fixed

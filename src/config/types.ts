@@ -312,6 +312,22 @@ export interface PlatformInstanceConfig {
    * the sticky's `description` / `footer` for platforms still rendering it.
    */
   stickyMessage?: OverheadVisibility;
+  /**
+   * Per-bot identity override. One daemon can run several bots (one per
+   * platform entry); each can have its OWN persona/directives/projects/brain
+   * by setting these here. When omitted, the platform inherits the top-level
+   * `Config.agentPersona` / `Config.skillsIndex`. This is what makes one
+   * daemon host multiple truly-separate agents (own SOUL, own brain, own
+   * skills) instead of one identity shared across all platforms.
+   */
+  agentPersona?: AgentPersonaConfig;
+  skillsIndex?: SkillsIndexConfig;
+  /**
+   * One-line shorthand for a per-bot identity dir. `agent: ~/openintel/bots/bot2`
+   * expands to SOUL.md / DIRECTIVES.md / projects/ / brain/ / skills/ under
+   * that dir. Explicit `agentPersona` / `skillsIndex` (above) win over this.
+   */
+  agent?: string;
   // Platform-specific fields (TypeScript allows extra properties)
   [key: string]: unknown;
 }

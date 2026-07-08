@@ -179,6 +179,7 @@ function createMockSessionContext(sessions: Map<string, Session> = new Map()): S
       markClaudeAccountCooling: mock(() => {}),
       getClaudeAccountPoolStatus: mock(() => []),
       getPlatformOverhead: mock(() => ({ sessionHeader: 'full' as const, stickyMessage: 'full' as const })),
+      getPlatformPersona: mock(() => ({})),
     },
   };
 }

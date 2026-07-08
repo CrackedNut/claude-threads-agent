@@ -111,3 +111,15 @@ describe('profile-first persona resolution', () => {
     expect(resolveProjectsDir(undefined)).toBe(join(profile, 'agent', 'projects'));
   });
 });
+
+describe('personaFromAgentDir (one-line per-bot shorthand)', () => {
+  test('expands a base dir into full persona + skills paths', async () => {
+    const { personaFromAgentDir } = await import('./agent-paths.js');
+    const { agentPersona, skillsIndex } = personaFromAgentDir('/openintel/bots/bot2');
+    expect(agentPersona.soulPath).toBe('/openintel/bots/bot2/SOUL.md');
+    expect(agentPersona.directivesPath).toBe('/openintel/bots/bot2/DIRECTIVES.md');
+    expect(agentPersona.projectsIndexDir).toBe('/openintel/bots/bot2/projects');
+    expect(agentPersona.brain?.dir).toBe('/openintel/bots/bot2/brain');
+    expect(skillsIndex.skillsDir).toBe('/openintel/bots/bot2/skills');
+  });
+});
