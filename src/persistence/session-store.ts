@@ -1,11 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, chmodSync } from 'fs';
-import { homedir } from 'os';
 import { join } from 'path';
 import { createLogger } from '../utils/logger.js';
 import type { PlatformFile } from '../platform/types.js';
 import type { ContextPromptFile } from '../operations/executors/types.js';
 import type { OverheadVisibility } from '../config/types.js';
 import type { SessionLoopState } from '../session/types.js';
+import { getConfigDir } from '../config/profile-home.js';
 
 const log = createLogger('persist');
 
@@ -135,7 +135,7 @@ interface SessionStoreData {
 }
 
 const STORE_VERSION = 2; // v2: Added platformId for multi-platform support
-const DEFAULT_CONFIG_DIR = join(homedir(), '.config', 'claude-threads');
+const DEFAULT_CONFIG_DIR = getConfigDir();
 const DEFAULT_SESSIONS_FILE = join(DEFAULT_CONFIG_DIR, 'sessions.json');
 
 /**

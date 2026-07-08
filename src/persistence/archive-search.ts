@@ -19,12 +19,12 @@
 
 import { existsSync, readdirSync, statSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { homedir } from 'os';
 import { createLogger } from '../utils/logger.js';
+import { getStateDir } from '../config/profile-home.js';
 
 const log = createLogger('archive-search');
 
-export const DEFAULT_ARCHIVE_DIR = join(homedir(), '.claude-threads', 'logs');
+export const DEFAULT_ARCHIVE_DIR = join(getStateDir(), 'logs');
 
 export type ArchiveScope = 'thread' | 'platform' | 'all';
 

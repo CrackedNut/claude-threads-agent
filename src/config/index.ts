@@ -1,6 +1,5 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync } from 'fs';
 import { resolve, dirname } from 'path';
-import { homedir } from 'os';
 import yaml from 'js-yaml';
 
 // Re-export all types from types.ts
@@ -40,9 +39,10 @@ export {
 } from './types.js';
 
 import type { Config, WorktreeMode as WorktreeModeType, PermissionMode, OverheadVisibility } from './types.js';
+import { getConfigDir } from './profile-home.js';
 
 // YAML config path
-export const CONFIG_PATH = resolve(homedir(), '.config', 'claude-threads', 'config.yaml');
+export const CONFIG_PATH = resolve(getConfigDir(), 'config.yaml');
 
 // =============================================================================
 // Config Loading

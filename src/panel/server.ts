@@ -28,8 +28,9 @@ import { execSync, spawn } from 'child_process';
 import { CONFIG_PATH, loadConfigWithMigration, saveConfig } from '../config/index.js';
 import { resolveAgentPaths, findSkillEntries } from '../config/agent-paths.js';
 import { PANEL_HTML } from './ui.js';
+import { getStateDir } from '../config/profile-home.js';
 
-const BOT_LOG = join(homedir(), '.claude-threads', 'logs', 'bot.log');
+const BOT_LOG = join(getStateDir(), 'logs', 'bot.log');
 
 /** One safe path segment (no traversal, no separators). */
 function isSafeSegment(seg: string): boolean {

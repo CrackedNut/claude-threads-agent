@@ -19,9 +19,10 @@ import { existsSync, readdirSync } from 'fs';
 import { join, resolve } from 'path';
 import { homedir } from 'os';
 import type { AgentPersonaConfig, SkillsIndexConfig, Config } from './types.js';
+import { getAgentHome } from './profile-home.js';
 
 /** Self-owned content root for fresh installs. */
-export const AGENT_HOME = join(homedir(), '.config', 'claude-threads', 'agent');
+export const AGENT_HOME = getAgentHome();
 
 /**
  * Expand a leading `~` to the user's home dir, otherwise resolve to an

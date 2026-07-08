@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.9] - 2026-07-08
+
+### Added
+- **Profile homes — multiple bots on one machine.** A profile is one directory that owns everything a bot is: `~/openintel/<name>/` holds its config.yaml, sessions.json, agent content (SOUL/DIRECTIVES/projects/skills/brain), chat-log archive, and worktree state. Select with `openintel -p <name> <command>` (or `OPENINTEL_PROFILE`); each profile runs its own daemon with per-profile pid files, so bots start/stop independently. One repo checkout serves every profile. `openintel migrate <name>` moves a legacy single-bot install into a profile; `openintel profiles` lists them. Without a profile, everything stays on the exact legacy paths — existing installs are untouched.
+
 ## [2.2.8] - 2026-07-08
 
 ### Changed
