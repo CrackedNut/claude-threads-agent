@@ -56,3 +56,50 @@ describe('profile mode', () => {
     expect(getProfilesRoot()).toBe(join(homedir(), 'openintel'));
   });
 });
+
+// =============================================================================
+// Profile-first agent-file resolution (persona isolation between bots)
+// =============================================================================
+
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import {
+  resolveSoulPath,
+  resolveDirectivesPath,
+  resolveProjectsDir,
+  resolveBrainDir,
+} from './agent-paths.js';
+
+describe('profile-first persona resolution', () => {
+  let profile: string;
+
+  beforeEach(() => {
+    profile = mkdtempSync(join(tmpdir(), 'oi-profile-'));
+    process.env.OPENINTEL_HOME = profile;
+  });
+
+  afterEach(() => {
+    rmSync(profile, { recursive: true, force: true });
+    delete process.env.OPENINTEL_HOME;
+  });
+
+  test("a profile's own SOUL/DIRECTIVES/projects beat legacy machine-wide files", () => {
+    // Regression: on a machine with ~/.hermes files, a fresh bot profile
+    // inherited another bot's persona because legacy paths won the fallback.
+    mkdirSync(join(profile, 'agent', 'projects'), { recursive: true });
+    writeFileSync(join(profile, 'agent', 'SOUL.md'), '# bot2 soul');
+    writeFileSync(join(profile, 'agent', 'DIRECTIVES.md'), '# bot2 rules');
+    expect(resolveSoulPath(undefined)).toBe(join(profile, 'agent', 'SOUL.md'));
+    expect(resolveDirectivesPath(undefined)).toBe(join(profile, 'agent', 'DIRECTIVES.md'));
+    expect(resolveProjectsDir(undefined)).toBe(join(profile, 'agent', 'projects'));
+  });
+
+  test('explicit config paths still win over everything', () => {
+    writeFileSync(join(profile, 'other-soul.md'), 'x');
+    expect(resolveSoulPath({ soulPath: join(profile, 'other-soul.md') })).toBe(join(profile, 'other-soul.md'));
+  });
+
+  test('brain defaults inside the profile with no legacy fallback', () => {
+    expect(resolveBrainDir(undefined)).toBe(join(profile, 'agent', 'brain'));
+  });
+});

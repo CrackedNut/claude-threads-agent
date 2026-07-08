@@ -19,10 +19,7 @@ import { existsSync, readdirSync } from 'fs';
 import { join, resolve } from 'path';
 import { homedir } from 'os';
 import type { AgentPersonaConfig, SkillsIndexConfig, Config } from './types.js';
-import { getAgentHome } from './profile-home.js';
-
-/** Self-owned content root for fresh installs. */
-export const AGENT_HOME = getAgentHome();
+import { getAgentHome, getProfileHome } from './profile-home.js';
 
 /**
  * Expand a leading `~` to the user's home dir, otherwise resolve to an
@@ -51,24 +48,41 @@ function firstExisting(candidates: string[], fallback: string): string {
   return fallback;
 }
 
+/**
+ * Profile-first resolution: a profile's OWN agent file beats the machine-wide
+ * legacy locations. Without this, a fresh bot on a machine that has Hermes
+ * files would silently inherit another bot's persona — the opposite of what
+ * profiles promise. Legacy paths still win in legacy (non-profile) mode and
+ * as a fallback when the profile has no such file yet. Lazy getAgentHome()
+ * calls (not a module-level const) so tests can vary OPENINTEL_HOME after
+ * import.
+ */
+function resolveAgentFile(ownRelative: string, legacyCandidates: string[]): string {
+  const own = join(getAgentHome(), ownRelative);
+  if (getProfileHome() && existsSync(own)) return own;
+  return firstExisting(legacyCandidates, own);
+}
+
 export function resolveSoulPath(config?: AgentPersonaConfig): string {
   if (config?.soulPath) return resolveTilde(config.soulPath);
-  return firstExisting([join(homedir(), '.hermes', 'SOUL.md')], join(AGENT_HOME, 'SOUL.md'));
+  return resolveAgentFile('SOUL.md', [join(homedir(), '.hermes', 'SOUL.md')]);
 }
 
 export function resolveDirectivesPath(config?: AgentPersonaConfig): string {
   if (config?.directivesPath) return resolveTilde(config.directivesPath);
-  return firstExisting([join(homedir(), '.hermes', 'DIRECTIVES.md')], join(AGENT_HOME, 'DIRECTIVES.md'));
+  return resolveAgentFile('DIRECTIVES.md', [join(homedir(), '.hermes', 'DIRECTIVES.md')]);
 }
 
 export function resolveProjectsDir(config?: AgentPersonaConfig): string {
   if (config?.projectsIndexDir) return resolveTilde(config.projectsIndexDir);
-  return firstExisting([join(homedir(), 'agent-memory', 'projects')], join(AGENT_HOME, 'projects'));
+  return resolveAgentFile('projects', [join(homedir(), 'agent-memory', 'projects')]);
 }
 
 export function resolveBrainDir(config?: AgentPersonaConfig): string {
   if (config?.brain?.dir) return resolveTilde(config.brain.dir);
-  return join(AGENT_HOME, 'brain');
+  // No legacy fallback on purpose — brains are per-profile unless explicitly
+  // pointed at a shared dir in config (natethropic shares ~/agent-memory/brain).
+  return join(getAgentHome(), 'brain');
 }
 
 /** A skills dir only counts if it actually contains at least one SKILL.md. */
@@ -78,10 +92,13 @@ function hasAnySkill(dir: string): boolean {
 
 export function resolveSkillsDir(config?: SkillsIndexConfig): string {
   if (config?.skillsDir) return resolveTilde(config.skillsDir);
+  // Profile-first, same rationale as resolveAgentFile.
+  const own = join(getAgentHome(), 'skills');
+  if (getProfileHome() && hasAnySkill(own)) return own;
   for (const cand of [join(homedir(), '.claude', 'skills'), join(homedir(), '.hermes', 'skills')]) {
     if (hasAnySkill(cand)) return cand;
   }
-  return join(AGENT_HOME, 'skills');
+  return own;
 }
 
 export interface AgentPaths {

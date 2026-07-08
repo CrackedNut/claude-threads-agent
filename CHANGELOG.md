@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-07-08
+
+### Fixed
+- **Profiles no longer inherit another bot's persona.** On machines with legacy Hermes files (`~/.hermes/SOUL.md`, `~/agent-memory/projects`, machine-wide skills), a fresh profile's default persona resolution picked those up — bot2 would silently speak with bot1's soul. A profile's own `agent/` files now beat legacy locations (explicit config paths still win over everything); skills got the same profile-first treatment, and the brain default never falls back to shared paths.
+
 ## [2.2.9] - 2026-07-08
 
 ### Added
