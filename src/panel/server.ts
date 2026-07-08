@@ -26,11 +26,49 @@ import { join, resolve, dirname } from 'path';
 import { homedir } from 'os';
 import { execSync, spawn } from 'child_process';
 import { CONFIG_PATH, loadConfigWithMigration, saveConfig } from '../config/index.js';
-import { resolveAgentPaths, findSkillEntries } from '../config/agent-paths.js';
+import type { Config, PlatformInstanceConfig } from '../config/index.js';
+import { resolveAgentPaths, personaFromAgentDir, type AgentPaths } from '../config/agent-paths.js';
+import { findSkillEntries } from '../config/agent-paths.js';
 import { PANEL_HTML } from './ui.js';
 import { getStateDir } from '../config/profile-home.js';
 
 const BOT_LOG = join(getStateDir(), 'logs', 'bot.log');
+
+/**
+ * Resolve agent paths (soul/directives/projects/skills/brain) for a specific
+ * bot when this daemon hosts several. `botId` is a platform id; when it names
+ * a platform with its own identity (explicit `agentPersona`/`skillsIndex` or
+ * the `agent: <dir>` shorthand) we resolve against THAT, so the panel's
+ * Persona/Projects/Skills tabs edit the right bot's files. Unknown/blank →
+ * the daemon-global defaults (single-bot behavior, unchanged).
+ */
+function agentPathsFor(botId?: string): AgentPaths {
+  const config = loadConfigWithMigration();
+  const platforms = (config?.platforms as PlatformInstanceConfig[] | undefined) ?? [];
+  const pf = botId ? platforms.find((p) => p.id === botId) : undefined;
+  if (pf) {
+    const shorthand = typeof pf.agent === 'string' && pf.agent.trim() ? personaFromAgentDir(pf.agent) : undefined;
+    const view: Config = {
+      ...(config as Config),
+      agentPersona: pf.agentPersona ?? shorthand?.agentPersona ?? config?.agentPersona,
+      skillsIndex: pf.skillsIndex ?? shorthand?.skillsIndex ?? config?.skillsIndex,
+    };
+    return resolveAgentPaths(view);
+  }
+  return resolveAgentPaths(config);
+}
+
+/** List the bots this daemon hosts (one per platform), for the panel selector. */
+function listBots(): Array<{ id: string; botName: string; displayName: string; ownIdentity: boolean }> {
+  const config = loadConfigWithMigration();
+  const platforms = (config?.platforms as PlatformInstanceConfig[] | undefined) ?? [];
+  return platforms.map((p) => ({
+    id: p.id,
+    botName: (p.botName as string) ?? p.id,
+    displayName: p.displayName ?? p.id,
+    ownIdentity: !!(p.agentPersona || p.skillsIndex || (typeof p.agent === 'string' && p.agent.trim())),
+  }));
+}
 
 /** One safe path segment (no traversal, no separators). */
 function isSafeSegment(seg: string): boolean {
@@ -225,10 +263,13 @@ export function startPanelServer(options: PanelOptions): { port: number; close: 
   });
 
   // ---- paths (persisted into config.yaml) ----------------------------------
+  // List of bots this daemon hosts, for the panel's agent selector.
+  app.get('/api/bots', (c) => c.json({ bots: listBots() }));
+
   app.get('/api/paths', (c) => {
     const config = loadConfigWithMigration();
     return c.json({
-      resolved: resolveAgentPaths(config),
+      resolved: agentPathsFor(c.req.query('bot')),
       configured: {
         soulPath: config?.agentPersona?.soulPath ?? null,
         directivesPath: config?.agentPersona?.directivesPath ?? null,
@@ -267,11 +308,11 @@ export function startPanelServer(options: PanelOptions): { port: number; close: 
   // ---- persona files -------------------------------------------------------
   for (const key of ['soul', 'directives'] as const) {
     app.get(`/api/persona/${key}`, (c) => {
-      const paths = resolveAgentPaths(loadConfigWithMigration());
+      const paths = agentPathsFor(c.req.query('bot'));
       return c.json({ path: paths[key], content: readTextOr(paths[key]) });
     });
     app.put(`/api/persona/${key}`, async (c) => {
-      const paths = resolveAgentPaths(loadConfigWithMigration());
+      const paths = agentPathsFor(c.req.query('bot'));
       const content = await c.req.text();
       mkdirSync(resolve(paths[key], '..'), { recursive: true });
       writeFileSync(paths[key], content);
@@ -282,13 +323,13 @@ export function startPanelServer(options: PanelOptions): { port: number; close: 
 
   // ---- projects index ------------------------------------------------------
   app.get('/api/projects', (c) => {
-    const { projectsDir } = resolveAgentPaths(loadConfigWithMigration());
+    const { projectsDir } = agentPathsFor(c.req.query('bot'));
     return c.json({ dir: projectsDir, entries: listProjectEntries(projectsDir) });
   });
   app.put('/api/projects/:name', async (c) => {
     const name = c.req.param('name');
     if (!isSafeSegment(name)) return c.json({ ok: false, error: 'invalid project name' }, 400);
-    const { projectsDir } = resolveAgentPaths(loadConfigWithMigration());
+    const { projectsDir } = agentPathsFor(c.req.query('bot'));
     const dir = join(projectsDir, name);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'description.md'), await c.req.text());
@@ -298,7 +339,7 @@ export function startPanelServer(options: PanelOptions): { port: number; close: 
   app.delete('/api/projects/:name', (c) => {
     const name = c.req.param('name');
     if (!isSafeSegment(name)) return c.json({ ok: false, error: 'invalid project name' }, 400);
-    const { projectsDir } = resolveAgentPaths(loadConfigWithMigration());
+    const { projectsDir } = agentPathsFor(c.req.query('bot'));
     const target = join(projectsDir, name, 'description.md');
     if (existsSync(target)) rmSync(target);
     options.log('info', `panel: project "${name}" description removed`);
@@ -309,13 +350,13 @@ export function startPanelServer(options: PanelOptions): { port: number; close: 
   app.get('/api/projects/:name/files/:file', (c) => {
     const { name, file } = c.req.param();
     if (!isSafeSegment(name) || !isSafeMdFile(file)) return c.json({ ok: false, error: 'invalid name' }, 400);
-    const { projectsDir } = resolveAgentPaths(loadConfigWithMigration());
+    const { projectsDir } = agentPathsFor(c.req.query('bot'));
     return c.json({ content: readTextOr(join(projectsDir, name, file)) });
   });
   app.put('/api/projects/:name/files/:file', async (c) => {
     const { name, file } = c.req.param();
     if (!isSafeSegment(name) || !isSafeMdFile(file)) return c.json({ ok: false, error: 'invalid name' }, 400);
-    const { projectsDir } = resolveAgentPaths(loadConfigWithMigration());
+    const { projectsDir } = agentPathsFor(c.req.query('bot'));
     const dir = join(projectsDir, name);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, file), await c.req.text());
@@ -325,7 +366,7 @@ export function startPanelServer(options: PanelOptions): { port: number; close: 
   app.delete('/api/projects/:name/files/:file', (c) => {
     const { name, file } = c.req.param();
     if (!isSafeSegment(name) || !isSafeMdFile(file)) return c.json({ ok: false, error: 'invalid name' }, 400);
-    const { projectsDir } = resolveAgentPaths(loadConfigWithMigration());
+    const { projectsDir } = agentPathsFor(c.req.query('bot'));
     const target = join(projectsDir, name, file);
     if (existsSync(target)) rmSync(target);
     options.log('info', `panel: project file "${name}/${file}" deleted`);
@@ -334,7 +375,7 @@ export function startPanelServer(options: PanelOptions): { port: number; close: 
 
   // ---- skills (supports "name" and "category/name") -------------------------
   app.get('/api/skills', (c) => {
-    const { skillsDir } = resolveAgentPaths(loadConfigWithMigration());
+    const { skillsDir } = agentPathsFor(c.req.query('bot'));
     const entries = findSkillEntries(skillsDir).map((e) => ({
       name: e.name,
       content: readTextOr(e.mdPath),
@@ -344,7 +385,7 @@ export function startPanelServer(options: PanelOptions): { port: number; close: 
   app.put('/api/skills/:name{.+}', async (c) => {
     const name = c.req.param('name');
     if (!isSafeSkillName(name)) return c.json({ ok: false, error: 'invalid skill name' }, 400);
-    const { skillsDir } = resolveAgentPaths(loadConfigWithMigration());
+    const { skillsDir } = agentPathsFor(c.req.query('bot'));
     const mdPath = join(skillsDir, name, 'SKILL.md');
     mkdirSync(dirname(mdPath), { recursive: true });
     writeFileSync(mdPath, await c.req.text());
@@ -354,7 +395,7 @@ export function startPanelServer(options: PanelOptions): { port: number; close: 
   app.delete('/api/skills/:name{.+}', (c) => {
     const name = c.req.param('name');
     if (!isSafeSkillName(name)) return c.json({ ok: false, error: 'invalid skill name' }, 400);
-    const { skillsDir } = resolveAgentPaths(loadConfigWithMigration());
+    const { skillsDir } = agentPathsFor(c.req.query('bot'));
     const target = join(skillsDir, name, 'SKILL.md');
     if (existsSync(target)) rmSync(target);
     options.log('info', `panel: skill "${name}" removed`);

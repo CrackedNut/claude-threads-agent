@@ -222,6 +222,10 @@ export const PANEL_HTML = `<!doctype html>
 <div class="app">
   <aside>
     <div class="brand"><span class="dot" id="livedot"></span><span class="mark">OpenIntel</span></div>
+    <div class="bot-picker" id="bot-picker" style="display:none;padding:6px 10px">
+      <label style="font-size:11px;opacity:.6;display:block;margin-bottom:2px">Agent</label>
+      <select id="bot-select" onchange="onBotChange()" style="width:100%;padding:5px 6px;border-radius:6px;background:#1a1a1a;color:inherit;border:1px solid #333;font-size:12px"></select>
+    </div>
     <nav id="nav">
       <a href="#/overview" data-page="overview"><span class="ico">◈</span>Overview</a>
       <a href="#/persona" data-page="persona"><span class="ico">✦</span>Persona</a>
@@ -393,7 +397,32 @@ export const PANEL_HTML = `<!doctype html>
 
 <script>
 var $ = function (id) { return document.getElementById(id); };
-var state = { projects: [], skills: [], sel: { projects: null, skills: null }, personaTab: 'soul', persona: { soul: {}, directives: {} } };
+var state = { projects: [], skills: [], sel: { projects: null, skills: null }, personaTab: 'soul', persona: { soul: {}, directives: {} }, bot: '' };
+/* Scope persona/projects/skills/paths reads+writes to the selected agent
+   (a platform id) when this daemon hosts more than one bot. Empty = the
+   daemon-global identity (single-bot default). */
+function botQ() { return state.bot ? ('?bot=' + encodeURIComponent(state.bot)) : ''; }
+function loadBots() {
+  fetch('/api/bots').then(function (r) { return r.json(); }).then(function (j) {
+    var bots = (j && j.bots) || [];
+    // Always show the picker (even for a single bot) so it's clear WHICH
+    // agent's persona/directives/skills you're viewing. It becomes a real
+    // chooser the moment a second bot is added to this daemon.
+    if (bots.length < 1) { $('bot-picker').style.display = 'none'; return; }
+    var sel = $('bot-select');
+    sel.innerHTML = bots.map(function (b) {
+      return '<option value="' + b.id + '">' + (b.botName || b.id) + (b.ownIdentity ? '' : ' (shared)') + '</option>';
+    }).join('');
+    state.bot = bots[0].id;
+    sel.value = state.bot;
+    $('bot-picker').style.display = 'block';
+  }).catch(function () {});
+}
+function onBotChange() {
+  state.bot = $('bot-select').value;
+  // Reload every agent-scoped view for the newly selected bot.
+  loadPersona(); loadEntries('projects'); loadEntries('skills'); loadPaths();
+}
 
 /* ---------- routing ---------- */
 function route() {
@@ -517,7 +546,7 @@ function setPersonaTab(tab) {
 }
 function loadPersona() {
   ['soul', 'directives'].forEach(function (k) {
-    fetch('/api/persona/' + k).then(function (r) { return r.json(); }).then(function (j) {
+    fetch('/api/persona/' + k + botQ()).then(function (r) { return r.json(); }).then(function (j) {
       state.persona[k] = j;
       if (state.personaTab === k) setPersonaTab(k);
     });
@@ -526,7 +555,7 @@ function loadPersona() {
 function savePersona() {
   var tab = state.personaTab;
   state.persona[tab].content = $('persona-body').value;
-  fetch('/api/persona/' + tab, { method: 'PUT', body: $('persona-body').value }).then(function (r) {
+  fetch('/api/persona/' + tab + botQ(), { method: 'PUT', body: $('persona-body').value }).then(function (r) {
     toast(r.ok ? (tab === 'soul' ? 'Soul' : 'Directives') + ' saved — new sessions pick it up' : 'Save failed', !r.ok);
     if (r.ok) markClean('persona');
   });
@@ -545,7 +574,7 @@ function saveConfig() {
 
 /* ---------- master-detail (projects & skills) ---------- */
 function loadEntries(kind) {
-  fetch('/api/' + kind).then(function (r) { return r.json(); }).then(function (j) {
+  fetch('/api/' + kind + botQ()).then(function (r) { return r.json(); }).then(function (j) {
     state[kind] = j.entries;
     state[kind + 'Dir'] = j.dir;
     if (!state.sel[kind] && j.entries.length) state.sel[kind] = j.entries[0].name;
@@ -584,7 +613,7 @@ function selectEntry(kind, name) {
 function selectProjectFile(file) {
   state.projFile = file;
   var name = state.sel.projects;
-  fetch('/api/projects/' + encodeURIComponent(name) + '/files/' + encodeURIComponent(file))
+  fetch('/api/projects/' + encodeURIComponent(name) + '/files/' + encodeURIComponent(file) + botQ())
     .then(function (r) { return r.json(); })
     .then(function (j) { renderDetail('projects'); $('projects-body').value = j.content || ''; });
 }
@@ -641,9 +670,9 @@ function createEntry(kind) {
 function entryUrl(kind) {
   var name = state.sel[kind];
   if (kind === 'projects') {
-    return '/api/projects/' + encodeURIComponent(name) + '/files/' + encodeURIComponent(state.projFile || 'description.md');
+    return '/api/projects/' + encodeURIComponent(name) + '/files/' + encodeURIComponent(state.projFile || 'description.md') + botQ();
   }
-  return '/api/' + kind + '/' + encodeURIComponent(name).replace(/%2F/g, '/');
+  return '/api/' + kind + '/' + encodeURIComponent(name).replace(/%2F/g, '/') + botQ();
 }
 function saveEntry(kind) {
   if (!state.sel[kind]) return;
@@ -719,7 +748,7 @@ function addPlatform() {
 /* ---------- paths ---------- */
 var PATH_KEYS = [['soulPath', 'soul'], ['directivesPath', 'directives'], ['projectsIndexDir', 'projectsDir'], ['skillsDir', 'skillsDir']];
 function loadPaths() {
-  fetch('/api/paths').then(function (r) { return r.json(); }).then(function (j) {
+  fetch('/api/paths' + botQ()).then(function (r) { return r.json(); }).then(function (j) {
     PATH_KEYS.forEach(function (pair) {
       $('path-' + pair[0]).value = j.configured[pair[0]] || '';
       $('res-' + pair[1]).innerHTML = 'resolves to <b>' + esc(j.resolved[pair[1]]) + '</b>';
@@ -763,7 +792,7 @@ route();
 loadStatus(); setInterval(loadStatus, 5000);
 loadLogs(); setInterval(loadLogs, 3000);
 window.addEventListener('hashchange', loadLogs);
-loadPersona(); loadConfig(); loadEntries('projects'); loadEntries('skills'); loadPaths(); loadPlatforms();
+loadBots(); loadPersona(); loadConfig(); loadEntries('projects'); loadEntries('skills'); loadPaths(); loadPlatforms();
 </script>
 </body>
 </html>`;

@@ -74,3 +74,38 @@ describe('startPanelServer bind host', () => {
     }
   });
 });
+
+describe('agent selector endpoints', () => {
+  let nextPort2 = 47810;
+
+  it('GET /api/bots returns a list (empty when no config)', async () => {
+    const port = nextPort2++;
+    const { opts } = makeOpts({ port });
+    const server = startPanelServer(opts);
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/api/bots`);
+      expect(res.status).toBe(200);
+      const j = await res.json();
+      expect(Array.isArray(j.bots)).toBe(true);
+    } finally {
+      server.close();
+    }
+  });
+
+  it('persona/paths endpoints accept a ?bot= param without error', async () => {
+    const port = nextPort2++;
+    const { opts } = makeOpts({ port });
+    const server = startPanelServer(opts);
+    try {
+      // Unknown bot id falls back to daemon-global paths — must still 200.
+      const paths = await fetch(`http://127.0.0.1:${port}/api/paths?bot=nope`);
+      expect(paths.status).toBe(200);
+      const soul = await fetch(`http://127.0.0.1:${port}/api/persona/soul?bot=nope`);
+      expect(soul.status).toBe(200);
+      const body = await soul.json();
+      expect(typeof body.path).toBe('string');
+    } finally {
+      server.close();
+    }
+  });
+});

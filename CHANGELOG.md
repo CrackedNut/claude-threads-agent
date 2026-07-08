@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.4] - 2026-07-08
+
+### Added
+- **Dashboard agent selector.** The panel now shows an "Agent" dropdown (top of the sidebar) listing every bot the daemon hosts. Picking one scopes the Persona, Projects, Skills, and Paths tabs to THAT bot's own files — so on a multi-bot daemon you edit each bot's identity separately. New `GET /api/bots` endpoint; the persona/projects/skills/paths endpoints accept `?bot=<platformId>`. With a single bot the dropdown just shows which agent you're editing.
+
 ## [2.3.3] - 2026-07-08
 
 ### Added
