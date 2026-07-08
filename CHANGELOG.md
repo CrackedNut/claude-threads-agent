@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.2] - 2026-07-08
+
+### Fixed
+- **"Session resumed after bot restart" no longer spams the thread.** Active sessions posted a brand-new resume notice on every restart, so repeated restarts — and especially a panel-port `EADDRINUSE` crash-loop — stacked a wall of identical notices (seen ~15 in a row). The notice's post id is now persisted and reused: the first restart posts once, later restarts update that one message in place.
+- **Restart no longer races on the panel port.** The manager script's `stop` now blocks until the panel port is actually released before returning, and `start` waits too — closing the `EADDRINUSE` window that let a restart crash-loop (the very thing that caused the notice flood).
+
 ## [2.3.1] - 2026-07-08
 
 ### Fixed

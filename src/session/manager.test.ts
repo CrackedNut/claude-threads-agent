@@ -729,7 +729,7 @@ describe('SessionManager', () => {
         'needsContextPromptOnNextMessage', 'lifecyclePostId', 'isPaused', 'sessionTitle',
         'sessionDescription', 'sessionTags', 'pullRequestUrl', 'messageCount',
         'resumeFailCount', 'claudeAccountId', 'sessionHeaderMode',
-        'queuedUserMessages', 'loopState',
+        'queuedUserMessages', 'loopState', 'resumeNoticePostId',
         'mode', 'channelId', 'modelOverride',
       ]);
       expect(new Set(Object.keys(written))).toEqual(expectedKeys);

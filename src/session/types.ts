@@ -526,6 +526,14 @@ export interface Session {
    * `PersistedSession.loopState` so a loop survives bot restarts.
    */
   loopState?: SessionLoopState;
+
+  /**
+   * Post id of the "Session resumed after bot restart" notice, persisted so
+   * repeated restarts UPDATE the one notice in place instead of stacking a
+   * new one each time. Only used for active-session resumes (paused/timeout
+   * resumes reuse `lifecyclePostId`).
+   */
+  resumeNoticePostId?: string;
 }
 
 // =============================================================================

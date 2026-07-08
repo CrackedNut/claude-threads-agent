@@ -684,6 +684,7 @@ export class SessionManager extends EventEmitter {
       sessionHeaderMode: session.sessionHeaderMode,
       queuedUserMessages: session.queuedUserMessages,
       loopState: session.loopState,
+      resumeNoticePostId: session.resumeNoticePostId,
       mode: session.mode,
       channelId: session.channelId,
       modelOverride: session.modelOverride,

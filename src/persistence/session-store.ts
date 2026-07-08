@@ -118,6 +118,12 @@ export interface PersistedSession {
    * `Session.loopState` at resume so an in-flight loop survives restarts.
    */
   loopState?: SessionLoopState;
+  /**
+   * Post id of the active-session "resumed after bot restart" notice, so
+   * repeated restarts update one notice instead of stacking new ones.
+   * Optional for backward compatibility.
+   */
+  resumeNoticePostId?: string;
 }
 
 /**

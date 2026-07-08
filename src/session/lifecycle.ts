@@ -1222,6 +1222,32 @@ export async function startSession(
 }
 
 /**
+ * Post — or idempotently update — the "resumed after bot restart" notice for
+ * an active session (one with no lifecyclePostId).
+ *
+ * Bug (2026-07-08): a fresh post was created on every restart, so repeated
+ * restarts — and especially a restart crash-loop (panel-port EADDRINUSE
+ * observed ~15× in a row) — stacked a wall of identical notices. Now the
+ * notice's post id is persisted (`session.resumeNoticePostId`) and reused:
+ * the second and later restarts UPDATE that one post in place. If the prior
+ * notice was deleted (update fails), post a fresh one and re-capture the id.
+ */
+export async function postOrUpdateResumeNotice(
+  session: Session,
+  message: string,
+): Promise<void> {
+  if (session.resumeNoticePostId) {
+    const updated = await withErrorHandling(
+      () => session.platform.updatePost(session.resumeNoticePostId as string, message),
+      { action: 'Update resume notice', session },
+    );
+    if (updated !== undefined) return; // updated in place — no new post
+  }
+  const noticePost = await post(session, 'resume', message);
+  session.resumeNoticePostId = noticePost?.id;
+}
+
+/**
  * Resume a session from persisted state.
  */
 export async function resumeSession(
@@ -1412,6 +1438,7 @@ export async function resumeSession(
     // Restore an armed loop so it survives the restart. Missing in old
     // persisted records → no loop (defensive default).
     loopState: state.loopState ? { ...state.loopState } : undefined,
+    resumeNoticePostId: state.resumeNoticePostId,
     // Channel-mode identity. Missing in old persisted records → thread-mode
     // behavior preserved exactly. Channel-mode sessions are shared across
     // all allowed users in the channel; the persisted `channelId` is what
@@ -1527,9 +1554,9 @@ export async function resumeSession(
       session.lifecyclePostId = undefined;
       transitionTo(session, 'active');
     } else {
-      // Fallback: create new post if no lifecyclePostId (e.g., old persisted sessions)
+      // No lifecyclePostId (active session resumed after a plain bot restart).
       const restartMsg = `${sessionFormatter.formatBold('Session resumed')} after bot restart (v${VERSION})\n${sessionFormatter.formatItalic('Reconnected to Claude session. You can continue where you left off.')}`;
-      await post(session, 'resume', restartMsg);
+      await postOrUpdateResumeNotice(session, restartMsg);
     }
 
     // Update session header

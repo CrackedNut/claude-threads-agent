@@ -1429,3 +1429,58 @@ describe('resumeSessionHeaderMode', () => {
   });
 });
 
+
+describe('postOrUpdateResumeNotice (idempotent restart notice)', () => {
+  function makeSession() {
+    const created: string[] = [];
+    const updated: Array<{ id: string; msg: string }> = [];
+    let counter = 0;
+    const session: any = {
+      sessionId: 'p:thread1',
+      threadId: 'thread1',
+      platformId: 'p',
+      startedBy: 'nate',
+      resumeNoticePostId: undefined,
+      messageManager: undefined,
+      platform: {
+        createPost: mock(async (msg: string) => {
+          const id = `post_${++counter}`;
+          created.push(msg);
+          return { id, platformId: 'p', channelId: 'c', userId: 'bot', message: msg, rootId: '', createAt: 1 };
+        }),
+        updatePost: mock(async (id: string, msg: string) => {
+          updated.push({ id, msg });
+          return { id, platformId: 'p', channelId: 'c', userId: 'bot', message: msg, rootId: '', createAt: 1 };
+        }),
+        getFormatter: () => createMockFormatter(),
+      },
+    };
+    return { session, created, updated };
+  }
+
+  it('first restart posts one notice and remembers its id', async () => {
+    const { session, created } = makeSession();
+    await lifecycle.postOrUpdateResumeNotice(session, 'resumed');
+    expect(created.length).toBe(1);
+    expect(session.resumeNoticePostId).toBe('post_1');
+  });
+
+  it('subsequent restarts UPDATE the same post — no new posts stacked', async () => {
+    const { session, created, updated } = makeSession();
+    await lifecycle.postOrUpdateResumeNotice(session, 'resume #1'); // posts post_1
+    await lifecycle.postOrUpdateResumeNotice(session, 'resume #2'); // updates post_1
+    await lifecycle.postOrUpdateResumeNotice(session, 'resume #3'); // updates post_1
+    expect(created.length).toBe(1);                 // only ever ONE post
+    expect(updated.map(u => u.id)).toEqual(['post_1', 'post_1']);
+    expect(session.resumeNoticePostId).toBe('post_1');
+  });
+
+  it('re-posts if the remembered notice was deleted (update fails)', async () => {
+    const { session } = makeSession();
+    session.resumeNoticePostId = 'gone';
+    session.platform.updatePost = mock(async () => { throw new Error('404 not found'); });
+    await lifecycle.postOrUpdateResumeNotice(session, 'resumed');
+    // update threw → fell back to a fresh post and recaptured the id
+    expect(session.resumeNoticePostId).toBe('post_1');
+  });
+});

@@ -69,6 +69,29 @@ pids_matching() {
   ps -ax -o pid,args 2>/dev/null | awk -v p="$pattern" '$0 ~ p && !/awk/ && !/grep/ { print $1 }'
 }
 
+# Resolve the panel port for the active profile/legacy config (default 7777).
+panel_port() {
+  local cfg port=7777
+  if [[ -n "$PROFILE" ]]; then cfg="$OPENINTEL_HOME/config.yaml"; else cfg="$HOME/.config/claude-threads/config.yaml"; fi
+  if [[ -f "$cfg" ]]; then
+    local p; p=$(awk '/^panel:/{inp=1;next} inp&&/^[^ ]/{inp=0} inp&&/port:/{print $2; exit}' "$cfg")
+    [[ -n "$p" ]] && port="$p"
+  fi
+  echo "$port"
+}
+
+# Block until the panel port is free (or timeout). Prevents the restart race
+# where a new daemon binds 0.0.0.0:<port> before the old one released it →
+# EADDRINUSE crash-loop (which also spammed "session resumed" notices).
+wait_port_free() {
+  local port; port="$(panel_port)"
+  for _ in $(seq 1 20); do
+    lsof -ti :"$port" >/dev/null 2>&1 || return 0
+    sleep 0.5
+  done
+  warn "port $port still busy after 10s — starting anyway"
+}
+
 RED=$'\033[31m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'; BLUE=$'\033[34m'; RESET=$'\033[0m'
 log()  { printf '%s[ct] %s%s\n' "$BLUE"   "$*" "$RESET" >&2; }
 ok()   { printf '%s[ct] ✓ %s%s\n' "$GREEN" "$*" "$RESET" >&2; }
@@ -210,6 +233,7 @@ stop_by_pidfile() {
 stop_bot() {
   log "stopping bot${PROFILE:+ (profile: $PROFILE)}..."
   if stop_by_pidfile; then
+    wait_port_free
     return 0
   fi
   if [[ -n "$PROFILE" ]]; then
@@ -229,6 +253,7 @@ stop_bot() {
     kill_matching "$NODE_PATTERN"   KILL
     sleep 1
   fi
+  wait_port_free
 }
 
 start_bot() {
@@ -249,6 +274,7 @@ start_bot() {
   if [[ -n "$PROFILE" ]] && [[ ! -f "$OPENINTEL_HOME/config.yaml" ]]; then
     die "profile '$PROFILE' has no config at $OPENINTEL_HOME/config.yaml — run \`$(basename "$0") migrate $PROFILE\` or \`$(basename "$0") -p $PROFILE setup\` first"
   fi
+  wait_port_free
   local dpid
   ( cd "$REPO" && nohup "$DAEMON_BIN" "${DAEMON_ARGS[@]}" >>"$BOT_LOG" 2>&1 & echo $! > "$PID_FILE"; disown ) || true
   sleep 2
