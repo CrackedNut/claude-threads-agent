@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.5] - 2026-07-09
+
+### Changed
+- **Agent memory map made explicit.** The second-brain system prompt now spells out the whole memory vault as three layers with clear homes: the `brain/` wiki (semantic/encyclopedic memory), `projects/<name>/playbook.md` (deep per-project runbooks — the working project memory, unchanged), and `daily/` notes. Rule of thumb baked in: project-specific operational detail → its playbook; general cross-project knowledge → a wiki article. Removes any ambiguity about where the agent edits which kind of memory.
+
 ## [2.3.4] - 2026-07-08
 
 ### Added

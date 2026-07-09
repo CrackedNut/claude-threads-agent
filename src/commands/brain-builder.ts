@@ -19,7 +19,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
 import type { AgentPersonaConfig } from '../config/types.js';
 import { resolveBrainDir } from '../config/agent-paths.js';
 import { createLogger } from '../utils/logger.js';
@@ -89,14 +89,22 @@ export function buildBrainText(config?: AgentPersonaConfig): string {
   if (!ensureBrainScaffold(dir)) return '';
 
   const index = readIndexCached(join(dir, BRAIN_INDEX_FILENAME));
+  // The brain lives inside a larger memory vault; deep project runbooks and
+  // daily notes are its siblings. Spell out the whole map so there's never
+  // ambiguity about WHERE a given kind of knowledge is edited.
+  const memRoot = dirname(dir);
 
-  return `## Second Brain
+  return `## Second Brain & memory map
 
-You have a persistent markdown knowledge base (your "second brain") at:
-\`${dir}\`
-It survives across all sessions, channels, and restarts. Read and write it with your normal file tools — the notes are plain files on disk.
+Your persistent memory is one Obsidian vault at \`${memRoot}\`. It survives across all sessions, channels, and restarts — plain markdown files you read and write with your normal file tools. It has three layers, each with a clear home:
 
-Conventions:
+- **\`${dir}\`** — the WIKI / second brain: a cross-linked encyclopedia (\`index.md\` is the map). This is your semantic memory — concepts, how systems connect, durable cross-cutting facts. READ the relevant article before working; UPDATE or add articles when you learn something durable and general.
+- **\`${join(memRoot, 'projects')}/<name>/playbook.md\`** — DEEP PROJECT RUNBOOKS: the proven operational state of each project. This is your working project memory — when a task's project has a playbook, read it first and edit it as the project evolves. (Unchanged from how you've always worked; \`scratch.md\` alongside is append-only session work.)
+- **\`${join(memRoot, 'daily')}/YYYY-MM-DD.md\`** — daily notes / checkpoints.
+
+Rule of thumb: **project-specific operational detail → its \`playbook.md\`; general cross-project knowledge → a wiki article in the brain.** A wiki article should link to the project playbooks it summarizes; a playbook can link back to its wiki article. Everything is one graph.
+
+Second-brain conventions:
 - \`INDEX.md\` (inlined below) is the map. When a task touches a topic listed there, READ that note before working. A \`[[wikilink]]\` named \`some-note\` lives at \`${dir}/some-note.md\` — follow links as deep as relevance demands.
 - One topic per note, kebab-case filename. Link related notes with \`[[name]]\` liberally; a link to a note that doesn't exist yet marks it as worth writing.
 - When you finish meaningful work or learn something durable — a decision, a gotcha, a project fact, a user preference — UPDATE the brain before ending the turn: edit the relevant note or create a new one, and keep its one-line entry in INDEX.md current (\`- [[note-name]] — hook\`).
