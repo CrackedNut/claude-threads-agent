@@ -747,6 +747,40 @@ const handleSearch: CommandHandler = async (ctx, args) => {
 /**
  * Create a passthrough handler for Claude Code slash commands.
  */
+/**
+ * Handle !context. Two modes on one command:
+ *   - `!context <channel_id> [n]` → pull the last N (default 30) live messages
+ *     from ANOTHER channel into this session as context (cross-channel recall).
+ *     Channel ids: Mattermost 26-char [a-z0-9]; Discord 17-20 digit snowflake.
+ *   - `!context` (no channel id) → passthrough to Claude's `/context` (token usage).
+ */
+const CHANNEL_ID_RE = /^([a-z0-9]{15,32}|\d{17,20})(?:\s+(\d{1,3}))?$/i;
+const handleContext: CommandHandler = async (ctx, args) => {
+  const trimmed = args?.trim() ?? '';
+  const m = trimmed.match(CHANNEL_ID_RE);
+  if (m) {
+    // Cross-channel recall. In-session only (needs a live session to inject into).
+    if (ctx.commandContext === 'first-message') {
+      await ctx.client.createPost(
+        `ℹ️ ${ctx.formatter.formatCode('!context <channel_id> [n]')} works inside a running session — mention me first, then pull a channel's context.`,
+        ctx.replyTo,
+      );
+      return { handled: true };
+    }
+    if (!ctx.isAllowed) return { handled: true };
+    const channelId = m[1];
+    const limit = Math.min(Math.max(m[2] ? parseInt(m[2], 10) : 30, 1), 200);
+    await ctx.sessionManager.channelContext(ctx.threadId, channelId, limit, ctx.username);
+    return { handled: true };
+  }
+  // No channel id → Claude's /context passthrough (token usage report).
+  if (ctx.commandContext === 'first-message') return { handled: false };
+  if (ctx.isAllowed) {
+    await ctx.sessionManager.sendFollowUp(ctx.threadId, `/context`, undefined, undefined, undefined, { system: true });
+  }
+  return { handled: true };
+};
+
 function createPassthroughHandler(slashCommand: string): CommandHandler {
   return async (ctx) => {
     if (ctx.commandContext === 'first-message') {
@@ -789,7 +823,7 @@ handlers.set('plugin', handlePlugin);
 handlers.set('search', handleSearch);
 
 // Passthrough commands
-handlers.set('context', createPassthroughHandler('context'));
+handlers.set('context', handleContext);
 handlers.set('cost', createPassthroughHandler('cost'));
 handlers.set('compact', createPassthroughHandler('compact'));
 

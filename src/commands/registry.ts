@@ -334,7 +334,8 @@ export const COMMAND_REGISTRY: CommandDefinition[] = [
   // ---------------------------------------------------------------------------
   {
     command: 'context',
-    description: 'Show context usage',
+    description: 'Show context usage — or `!context <channel_id> [n]` to pull the last N messages from another channel into this session',
+    args: '[channel_id] [n]',
     category: 'passthrough',
     audience: 'both',
   },

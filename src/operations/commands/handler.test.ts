@@ -997,3 +997,41 @@ describe('updateSessionHeader (sessionHeaderMode)', () => {
     expect(updatePost).not.toHaveBeenCalled();
   });
 });
+
+describe('channelContext (!context <channel_id> [n])', () => {
+  it('pulls the channel messages and injects them as a background context block', async () => {
+    const handleUserMessage = mock(() => Promise.resolve(true));
+    const getChannelHistory = mock(() => Promise.resolve([
+      { id: 'm1', userId: 'u1', username: 'alice', message: 'we shipped the scraper', createAt: 1783000000000 },
+      { id: 'm2', userId: 'u2', username: 'bob', message: 'nice, any blockers?', createAt: 1783000100000 },
+    ]));
+    const mockPlatform = createMockPlatform({ getChannelHistory } as any);
+    const session = createMockSession({ platform: mockPlatform, isProcessing: false });
+    session.messageManager = { ...session.messageManager, handleUserMessage } as any;
+
+    await commands.channelContext(session, 'chan-xyz-26charchannelid00', 25, 'alice');
+
+    expect(getChannelHistory).toHaveBeenCalledWith({ channelId: 'chan-xyz-26charchannelid00', limit: 25, excludeBotMessages: false });
+    // Idle Claude → delivered immediately as a follow-up.
+    expect(handleUserMessage).toHaveBeenCalled();
+    const [msg] = (handleUserMessage as ReturnType<typeof mock>).mock.calls[0];
+    expect(msg).toContain('another channel');
+    expect(msg).toContain('we shipped the scraper');
+    expect(msg).toContain('@alice:');
+    // Announced to the thread.
+    expect(mockPlatform.createPost).toHaveBeenCalled();
+  });
+
+  it('warns and injects nothing when the channel has no messages', async () => {
+    const handleUserMessage = mock(() => Promise.resolve(true));
+    const getChannelHistory = mock(() => Promise.resolve([]));
+    const mockPlatform = createMockPlatform({ getChannelHistory } as any);
+    const session = createMockSession({ platform: mockPlatform, isProcessing: false });
+    session.messageManager = { ...session.messageManager, handleUserMessage } as any;
+
+    await commands.channelContext(session, 'empty-channel-id-000000000', 30, 'alice');
+
+    expect(handleUserMessage).not.toHaveBeenCalled();
+    expect(mockPlatform.createPost).toHaveBeenCalled(); // the warning
+  });
+});

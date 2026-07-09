@@ -13,6 +13,7 @@ export {
   queueMessage,
   steerSession,
   importContext,
+  channelContext,
 
   // Directory management
   changeDirectory,

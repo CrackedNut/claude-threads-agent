@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.6] - 2026-07-09
+
+### Added
+- **`!context <channel_id> [n]` — cross-channel recall.** Pull the last N (default 30, max 200) live messages from ANOTHER channel into the current session as background context — "go read what they were saying over there." Bare `!context` still shows Claude's token-usage report. The bot must be a member of / able to see the target channel.
+
+### Changed
+- **The agent treats its brain as LIVE, not a spawn snapshot.** The second-brain prompt now states the inlined index is a point-in-time snapshot and instructs the agent to re-read the live vault (`ls`/`grep`/`Read` under the brain + projects dirs) when the user references something it doesn't see or when starting real work — so newly-built projects/notes from other chats are picked up mid-session, not just on restart.
+
 ## [2.3.5] - 2026-07-09
 
 ### Changed

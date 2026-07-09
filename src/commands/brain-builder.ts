@@ -105,7 +105,8 @@ Your persistent memory is one Obsidian vault at \`${memRoot}\`. It survives acro
 Rule of thumb: **project-specific operational detail → its \`playbook.md\`; general cross-project knowledge → a wiki article in the brain.** A wiki article should link to the project playbooks it summarizes; a playbook can link back to its wiki article. Everything is one graph.
 
 Second-brain conventions:
-- \`INDEX.md\` (inlined below) is the map. When a task touches a topic listed there, READ that note before working. A \`[[wikilink]]\` named \`some-note\` lives at \`${dir}/some-note.md\` — follow links as deep as relevance demands.
+- **The index below is a SNAPSHOT from when this session started — the brain is LIVE on disk and other conversations edit it while you run.** Never assume the inlined index is complete or current. When the user references something you don't see (another project, a past chat, "the thing we built yesterday"), or you're starting real work, RE-READ the live brain: \`ls\`/\`grep\`/\`Read\` under \`${dir}\` (and \`${join(dirname(dir), 'projects')}/\`) to pick up notes and projects created since you spawned. Trust the disk, not the snapshot.
+- \`INDEX.md\` is the map. When a task touches a topic listed there, READ that note before working. A \`[[wikilink]]\` named \`some-note\` lives at \`${dir}/some-note.md\` — follow links as deep as relevance demands.
 - One topic per note, kebab-case filename. Link related notes with \`[[name]]\` liberally; a link to a note that doesn't exist yet marks it as worth writing.
 - When you finish meaningful work or learn something durable — a decision, a gotcha, a project fact, a user preference — UPDATE the brain before ending the turn: edit the relevant note or create a new one, and keep its one-line entry in INDEX.md current (\`- [[note-name]] — hook\`).
 - Keep INDEX.md small: one line per note, details in the notes, never content in the index.

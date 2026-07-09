@@ -1193,6 +1193,16 @@ export class SessionManager extends EventEmitter {
   }
 
   /**
+   * `!context <channel_id> [n]`: pull the last N messages from another channel
+   * into this session as context.
+   */
+  async channelContext(threadId: string, channelId: string, limit: number, username: string): Promise<void> {
+    const session = this.findSessionByThreadId(threadId);
+    if (!session) return;
+    await commands.channelContext(session, channelId, limit, username);
+  }
+
+  /**
    * Arm loop mode (`!loop <goal>`) on a running session: auto-continue at
    * every turn boundary until Claude signals completion or the cap hits.
    */
