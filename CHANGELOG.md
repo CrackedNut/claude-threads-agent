@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.7] - 2026-07-15
+
+### Fixed
+- **`openintel <cmd>` with no `-p` no longer nukes the running profile bot.** When a single profile exists and there's no legacy install, bare commands now auto-target that profile. Previously a bare `openintel restart` ran in legacy mode: its stop pattern-killed the profile daemon (collateral), then start failed (no legacy config) — leaving the bot down. Multiple profiles with no default now error with a clear "specify -p <name>" instead of guessing.
+
 ## [2.3.6] - 2026-07-09
 
 ### Added

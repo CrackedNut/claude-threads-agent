@@ -42,7 +42,25 @@ NODE_PATTERN="claude-threads-agent/dist/index.js"
 PROFILE="${OPENINTEL_PROFILE:-}"
 PROFILES_ROOT="$HOME/openintel"
 
+# When no profile is given and there's no legacy install, auto-select the
+# sole profile. This prevents the footgun where a bare `openintel restart`
+# runs in legacy mode — pattern-killing the running profile daemon and then
+# failing to start (no legacy config). One profile → just target it.
+autodetect_profile() {
+  [[ -n "$PROFILE" || -n "${OPENINTEL_HOME:-}" ]] && return 0
+  [[ -f "$HOME/.config/claude-threads/config.yaml" ]] && return 0  # real legacy install → leave it
+  [[ -d "$PROFILES_ROOT" ]] || return 0
+  local found=() d
+  for d in "$PROFILES_ROOT"/*/; do [[ -f "$d/config.yaml" ]] && found+=("$(basename "$d")"); done
+  if [[ ${#found[@]} -eq 1 ]]; then
+    PROFILE="${found[0]}"
+  elif [[ ${#found[@]} -gt 1 ]]; then
+    die "multiple profiles (${found[*]}) and no default — specify one: $(basename "$0") -p <name> <cmd>"
+  fi
+}
+
 apply_profile() {
+  autodetect_profile
   if [[ -n "$PROFILE" ]]; then
     export OPENINTEL_HOME="$PROFILES_ROOT/$PROFILE"
     BOT_LOG="$OPENINTEL_HOME/logs/bot.log"
@@ -59,7 +77,7 @@ apply_profile() {
     PID_FILE="$HOME/.claude-threads/daemon.pid"
   fi
 }
-apply_profile
+# (invoked below, after log/die helpers are defined)
 
 # macOS `pgrep -f` is unreliable for matching full command lines (BSD pgrep
 # only looks at the executable name + first arg in some setups). Use a
@@ -97,6 +115,9 @@ log()  { printf '%s[ct] %s%s\n' "$BLUE"   "$*" "$RESET" >&2; }
 ok()   { printf '%s[ct] ✓ %s%s\n' "$GREEN" "$*" "$RESET" >&2; }
 warn() { printf '%s[ct] ⚠ %s%s\n' "$YELLOW" "$*" "$RESET" >&2; }
 die()  { printf '%s[ct] ✗ %s%s\n' "$RED"  "$*" "$RESET" >&2; exit 1; }
+
+# Resolve the profile now that die() exists (autodetect may die on ambiguity).
+apply_profile
 
 require_repo() { [[ -d "$REPO/.git" ]] || die "repo not found at $REPO (set CLAUDE_THREADS_REPO)"; }
 
