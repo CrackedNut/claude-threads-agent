@@ -116,8 +116,10 @@ ok()   { printf '%s[ct] ✓ %s%s\n' "$GREEN" "$*" "$RESET" >&2; }
 warn() { printf '%s[ct] ⚠ %s%s\n' "$YELLOW" "$*" "$RESET" >&2; }
 die()  { printf '%s[ct] ✗ %s%s\n' "$RED"  "$*" "$RESET" >&2; exit 1; }
 
-# Resolve the profile now that die() exists (autodetect may die on ambiguity).
-apply_profile
+# Profile resolution happens in main(), AFTER the -p/--profile flags are
+# parsed. Resolving at load time broke every `-p <name>` invocation the moment
+# a second profile existed: autodetect died on ambiguity before the flag that
+# resolves the ambiguity was ever read.
 
 require_repo() { [[ -d "$REPO/.git" ]] || die "repo not found at $REPO (set CLAUDE_THREADS_REPO)"; }
 
@@ -239,28 +241,67 @@ stop_by_pidfile() {
   # shellcheck disable=SC2086
   [[ -n "$kids" ]] && kill -TERM $kids 2>/dev/null || true
   kill -TERM "$dpid" 2>/dev/null || true
-  sleep 1
-  if kill -0 "$dpid" 2>/dev/null; then
-    warn "daemon survived SIGTERM, sending SIGKILL"
+  # Wait for the daemon AND every child to exit. Checking only the daemon pid
+  # let a node child that stalled on SIGTERM survive and squat the panel port
+  # as an orphan reparented to pid 1.
+  local deadline=$((SECONDS + 8)) survivors="" p
+  while (( SECONDS < deadline )); do
+    survivors=""
+    for p in $dpid $kids; do
+      kill -0 "$p" 2>/dev/null && survivors="$survivors $p"
+    done
+    [[ -z "$survivors" ]] && break
+    sleep 0.5
+  done
+  if [[ -n "$survivors" ]]; then
+    warn "processes survived SIGTERM ($survivors), sending SIGKILL"
     # shellcheck disable=SC2086
-    [[ -n "$kids" ]] && kill -KILL $kids 2>/dev/null || true
-    kill -KILL "$dpid" 2>/dev/null || true
+    kill -KILL $survivors 2>/dev/null || true
     sleep 1
   fi
   rm -f "$PID_FILE"
   return 0
 }
 
+# Kill orphaned bot processes squatting this profile's panel port (e.g. from
+# a previous stop where the child outlived the daemon). Only touches processes
+# actually running dist/index.js — never an unrelated service on the port.
+kill_port_squatters() {
+  local port; port="$(panel_port)"
+  local squatters; squatters=$(lsof -ti :"$port" 2>/dev/null | tr '\n' ' ')
+  [[ -n "${squatters// /}" ]] || return 0
+  local ours="" p
+  for p in $squatters; do
+    ps -p "$p" -o args= 2>/dev/null | grep -q 'dist/index\.js' && ours="$ours $p"
+  done
+  if [[ -z "${ours// /}" ]]; then
+    warn "port $port is held by a non-bot process ($squatters) — leaving it alone"
+    return 0
+  fi
+  warn "killing orphaned bot process(es) on port $port:$ours"
+  # shellcheck disable=SC2086
+  kill -TERM $ours 2>/dev/null || true
+  sleep 1
+  for p in $ours; do
+    kill -0 "$p" 2>/dev/null && kill -KILL "$p" 2>/dev/null || true
+  done
+  return 0
+}
+
 stop_bot() {
   log "stopping bot${PROFILE:+ (profile: $PROFILE)}..."
   if stop_by_pidfile; then
+    kill_port_squatters
     wait_port_free
     return 0
   fi
   if [[ -n "$PROFILE" ]]; then
     # Profile mode with no pid file: pattern-killing would take down EVERY
-    # profile's daemon on this machine. Refuse and let the operator decide.
-    warn "no live pid file for profile '$PROFILE' — nothing stopped (pattern kill would hit other profiles)"
+    # profile's daemon on this machine. Sweep orphans holding this profile's
+    # panel port (port + dist/index.js match is profile-specific and safe),
+    # but leave other profiles' daemons alone.
+    warn "no live pid file for profile '$PROFILE' — sweeping port squatters only (pattern kill would hit other profiles)"
+    kill_port_squatters
     return 0
   fi
   # Legacy single-bot: match by process pattern as before.
@@ -492,9 +533,15 @@ main() {
   while [[ "${1:-}" == "-p" || "${1:-}" == "--profile" ]]; do
     PROFILE="${2:-}"; shift 2 || die "-p requires a profile name"
     [[ -n "$PROFILE" ]] || die "-p requires a profile name"
-    apply_profile
   done
   local sub="${1:-}"; shift || true
+  # Resolve the profile now that flags are parsed. help/usage and `profiles`
+  # are profile-agnostic — they must work (not die on ambiguity) with any
+  # number of profiles present.
+  case "$sub" in
+    -h|--help|help|""|profiles) ;;
+    *) apply_profile ;;
+  esac
   case "$sub" in
     install)              cmd_install  "$@" ;;
     setup|onboard)         cmd_setup    "$@" ;;

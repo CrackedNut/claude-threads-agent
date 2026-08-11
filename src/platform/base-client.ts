@@ -81,8 +81,11 @@ export abstract class BasePlatformClient extends EventEmitter implements Platfor
 
   // Reconnection
   protected reconnectAttempts = 0;
+  /** Attempts past this only change log level — the client never gives up. */
   protected maxReconnectAttempts = 10;
   protected reconnectDelay = 1000;
+  /** Ceiling for the exponential backoff between attempts. */
+  protected maxReconnectDelay = 60000;
   protected reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 
   // ============================================================================
@@ -366,11 +369,6 @@ export abstract class BasePlatformClient extends EventEmitter implements Platfor
       this.reconnectTimeout = null;
     }
 
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      log.error('Max reconnection attempts reached');
-      return;
-    }
-
     // Clean up any existing connection before reconnecting
     // This is critical for recovery after long idle periods where the socket may be stale
     this.forceCloseConnection();
@@ -378,9 +376,17 @@ export abstract class BasePlatformClient extends EventEmitter implements Platfor
     // Mark that we're reconnecting (to trigger message recovery)
     this.isReconnecting = true;
 
+    // Never give up: a daemon that stops reconnecting after a finite ladder
+    // becomes a zombie (process up, deaf to all messages) the moment an
+    // outage outlasts the backoff. Past maxReconnectAttempts, keep retrying
+    // forever at the capped delay and log at warn level instead.
     this.reconnectAttempts++;
-    const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
-    wsLogger.info(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+    const delay = this.getReconnectDelay(this.reconnectAttempts);
+    if (this.reconnectAttempts > this.maxReconnectAttempts) {
+      wsLogger.warn(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}, retrying indefinitely)`);
+    } else {
+      wsLogger.info(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+    }
     this.emit('reconnecting', this.reconnectAttempts);
 
     this.reconnectTimeout = setTimeout(() => {
@@ -396,6 +402,13 @@ export abstract class BasePlatformClient extends EventEmitter implements Platfor
         this.scheduleReconnect();
       });
     }, delay);
+  }
+
+  /**
+   * Exponential backoff delay for a given attempt, capped at maxReconnectDelay.
+   */
+  protected getReconnectDelay(attempt: number): number {
+    return Math.min(this.reconnectDelay * Math.pow(2, attempt - 1), this.maxReconnectDelay);
   }
 
   /**
