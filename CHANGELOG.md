@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.10] - 2026-08-11
+
+### Added
+- **Interactive wizard on bare `openintel`.** Running `openintel` with no arguments in a terminal opens a menu: pick a bot (profiles with live daemon state, or "all bots"), then a command (status/logs/panel/start/stop/restart/install/rollback). Actions re-invoke the CLI with explicit `-p <name> <cmd>` flags, so the wizard can't drift from real commands. Also available as `openintel wizard`. Non-TTY bare invocations still print usage; all existing invocations unchanged.
+
 ## [2.3.9] - 2026-08-11
 
 ### Added
