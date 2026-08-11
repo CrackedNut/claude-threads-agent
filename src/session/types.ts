@@ -10,6 +10,7 @@ import type { SessionInfo } from '../ui/types.js';
 import type { RecentEvent, ErrorContext } from '../operations/bug-report/index.js';
 import type { ThreadLogger } from '../persistence/thread-logger.js';
 import type { MessageManager } from '../operations/message-manager.js';
+import type { ModelChoice } from '../operations/commands/models.js';
 import type { QuestionOption } from '../operations/types.js';
 import type { SessionTimers } from './timer-manager.js';
 import { checkTransition } from './lifecycle-fsm.js';
@@ -446,7 +447,7 @@ export interface Session {
    * bot-wide default (`!model --default`). Ephemeral — not persisted across
    * restart (a stale picker just stops responding).
    */
-  pendingModelPick?: { postId: string; setDefault: boolean };
+  pendingModelPick?: { postId: string; setDefault: boolean; choices?: ModelChoice[] };
 
   // Thread context prompt support
   needsContextPromptOnNextMessage?: boolean;   // Offer context prompt on next follow-up message (after !cd)

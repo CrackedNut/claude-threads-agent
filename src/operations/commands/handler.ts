@@ -27,7 +27,7 @@ import {
   ALLOW_ALL_EMOJIS,
   NUMBER_EMOJIS,
 } from '../../utils/emoji.js';
-import { MODEL_CHOICES, modelLabel } from './models.js';
+import { FALLBACK_MODEL_CHOICES, getModelChoices, modelLabel } from './models.js';
 import {
   collectBugReportContext,
   formatIssueBody,
@@ -981,7 +981,11 @@ export async function showModelPicker(
   if (!await requireSessionOwner(session, username, 'change the model')) return;
   const formatter = session.platform.getFormatter();
 
-  const list = MODEL_CHOICES.map(
+  // Live list when fetchable, static fallback otherwise. The fetched choices
+  // ride along on pendingModelPick so the eventual reaction resolves against
+  // exactly the list that was shown, not a re-fetch.
+  const choices = await getModelChoices();
+  const list = choices.map(
     (m, i) => `${formatter.formatBold(`${i + 1}.`)} ${m.label}`,
   ).join('\n');
   const header = setDefault
@@ -993,10 +997,10 @@ export async function showModelPicker(
   const body = `${header}\n${list}\n${formatter.formatItalic(footer)}`;
 
   // One reaction per choice (1️⃣…5️⃣). Reply target is the session thread/channel.
-  const reactions = [...NUMBER_EMOJIS].slice(0, MODEL_CHOICES.length);
+  const reactions = [...NUMBER_EMOJIS].slice(0, choices.length);
   const replyTo = session.mode === 'channel' ? session.channelId : session.threadId;
   const picker = await session.platform.createInteractivePost(body, reactions, replyTo);
-  session.pendingModelPick = { postId: picker.id, setDefault };
+  session.pendingModelPick = { postId: picker.id, setDefault, choices };
   // Register the picker post so a reaction on it resolves back to this session
   // (the reaction router looks the session up by post id). Without this the
   // reactions are silently dropped — they map to no session.
@@ -1018,10 +1022,13 @@ export async function applyModelPick(
 ): Promise<boolean> {
   const pending = session.pendingModelPick;
   if (!pending || pending.postId !== postId) return false;
-  if (emojiIndex < 0 || emojiIndex >= MODEL_CHOICES.length) return false;
+  // Resolve against the choices the picker actually showed (fallback covers
+  // pickers armed before this field existed).
+  const choices = pending.choices ?? FALLBACK_MODEL_CHOICES;
+  if (emojiIndex < 0 || emojiIndex >= choices.length) return false;
   if (!await requireSessionOwner(session, username, 'change the model')) return true;
 
-  const choice = MODEL_CHOICES[emojiIndex];
+  const choice = choices[emojiIndex];
   session.pendingModelPick = undefined;
 
   // `!model --default` also persists the bot-wide default for new sessions.
