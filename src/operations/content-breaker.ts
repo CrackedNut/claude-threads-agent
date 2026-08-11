@@ -501,3 +501,60 @@ export function splitContentForHeight(
 
   return chunks.length ? chunks : [content];
 }
+
+/**
+ * Split content into chunks that each fit under the platform's hard length
+ * threshold. Pure pre-split utility for creating NEW posts, the length-based
+ * sibling of splitContentForHeight.
+ *
+ * Prefers logical breakpoints (same search window as the streaming hard-break
+ * path), falls back to the last newline before the threshold, and finally to a
+ * raw cut at the threshold — a chunk over the platform limit would otherwise
+ * be truncated or rejected, which loses content.
+ *
+ * @param content - The content to split
+ * @param hardThreshold - Maximum chunk length (platform hardThreshold)
+ * @param contentBreaker - ContentBreaker instance for breakpoint search
+ * @returns Array of content chunks, each at most hardThreshold long
+ */
+export function splitContentForLength(
+  content: string,
+  hardThreshold: number,
+  contentBreaker: ContentBreaker
+): string[] {
+  const chunks: string[] = [];
+  let remaining = content;
+
+  while (remaining.length > hardThreshold) {
+    const startSearchPos = Math.floor(hardThreshold * 0.7);
+    const breakInfo = contentBreaker.findLogicalBreakpoint(
+      remaining,
+      startSearchPos,
+      Math.floor(hardThreshold * 0.3)
+    );
+
+    let breakPoint: number;
+    if (breakInfo && breakInfo.position > 0 && breakInfo.position <= hardThreshold) {
+      breakPoint = breakInfo.position;
+    } else {
+      breakPoint = remaining.lastIndexOf('\n', hardThreshold);
+      if (breakPoint < hardThreshold * 0.7) {
+        breakPoint = hardThreshold;
+      }
+    }
+
+    const firstPart = remaining.substring(0, breakPoint);
+    const rest = remaining.substring(breakPoint);
+    if (!firstPart || !rest) {
+      break;
+    }
+    chunks.push(firstPart);
+    remaining = rest;
+  }
+
+  if (remaining) {
+    chunks.push(remaining);
+  }
+
+  return chunks.length ? chunks : [content];
+}
