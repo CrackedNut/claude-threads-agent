@@ -488,6 +488,107 @@ cmd_profiles() {
   done
 }
 
+# ---------------------------------------------------------------------------
+# Interactive wizard — what a bare `openintel` runs on a TTY (also reachable
+# as the `wizard` subcommand). Pick a bot, then a command. Every action is
+# executed by re-invoking this script with explicit `-p <name> <cmd>` flags,
+# so wizard behavior can never drift from the real CLI.
+cmd_wizard() {
+  local self="$0"
+  while true; do
+    local profiles=() states=() d name dpid
+    for d in "$PROFILES_ROOT"/*/; do
+      [[ -f "$d/config.yaml" ]] || continue
+      name=$(basename "$d")
+      profiles+=("$name")
+      dpid=$(cat "$d/daemon.pid" 2>/dev/null || true)
+      if [[ -n "$dpid" ]] && kill -0 "$dpid" 2>/dev/null; then
+        states+=("${GREEN}running (pid:$dpid)${RESET}")
+      else
+        states+=("${YELLOW}stopped${RESET}")
+      fi
+    done
+    [[ ${#profiles[@]} -gt 0 ]] || die "no profiles at $PROFILES_ROOT — run \`$(basename "$0") setup\` or \`migrate <name>\` first"
+
+    printf '\n%sOpenIntel%s — pick a bot:\n' "$BLUE" "$RESET" >&2
+    local i
+    for i in "${!profiles[@]}"; do
+      printf '  %d) %-18s %b\n' $((i + 1)) "${profiles[i]}" "${states[i]}" >&2
+    done
+    printf '  a) all bots\n  q) quit\n' >&2
+    local pick
+    read -r -p "> " pick || return 0
+    case "$pick" in
+      q|Q|'') return 0 ;;
+      a|A) wizard_actions all "${profiles[@]}" ;;
+      *)
+        if [[ "$pick" =~ ^[0-9]+$ ]] && (( pick >= 1 && pick <= ${#profiles[@]} )); then
+          wizard_actions "${profiles[pick-1]}"
+        else
+          warn "invalid choice: $pick"
+        fi
+        ;;
+    esac
+  done
+}
+
+# Command menu for one profile (or "all" followed by every profile name).
+wizard_actions() {
+  local target="$1"; shift || true
+  local all_profiles=("$@")
+  local self="$0"
+  # logs/panel/rollback only make sense one bot at a time
+  local actions
+  if [[ "$target" == all ]]; then
+    actions=(status start stop restart install)
+  else
+    actions=(status logs panel start stop restart install rollback)
+  fi
+
+  while true; do
+    local label="$target"
+    [[ "$target" == all ]] && label="all bots"
+    printf '\n%s%s — pick a command:%s\n' "$BLUE" "$label" "$RESET" >&2
+    local i desc
+    for i in "${!actions[@]}"; do
+      case "${actions[i]}" in
+        status)   desc="status    — daemon, version, commit" ;;
+        logs)     desc="logs      — live tail (Ctrl-C returns here)" ;;
+        panel)    desc="panel     — open the dashboard" ;;
+        start)    desc="start" ;;
+        stop)     desc="stop" ;;
+        restart)  desc="restart" ;;
+        install)  desc="install   — update to latest $DEFAULT_REF + restart" ;;
+        rollback) desc="rollback  — restore previous snapshot" ;;
+      esac
+      printf '  %d) %s\n' $((i + 1)) "$desc" >&2
+    done
+    printf '  b) back    q) quit\n' >&2
+    local pick
+    read -r -p "> " pick || return 0
+    case "$pick" in
+      b|B) return 0 ;;
+      q|Q|'') exit 0 ;;
+      *)
+        if [[ "$pick" =~ ^[0-9]+$ ]] && (( pick >= 1 && pick <= ${#actions[@]} )); then
+          local cmd="${actions[pick-1]}" p
+          # Ignore Ctrl-C in the wizard while a child runs: the child (e.g.
+          # the logs tail) dies, the menu survives.
+          trap ':' INT
+          if [[ "$target" == all ]]; then
+            for p in "${all_profiles[@]}"; do "$self" -p "$p" "$cmd" || true; done
+          else
+            "$self" -p "$target" "$cmd" || true
+          fi
+          trap - INT
+        else
+          warn "invalid choice: $pick"
+        fi
+        ;;
+    esac
+  done
+}
+
 usage() {
   cat <<EOF
 usage: $(basename "$0") <command> [args]
@@ -501,6 +602,7 @@ commands:
   logs               tail the bot log
   migrate <name>     move a legacy install into profile ~/openintel/<name>
   profiles           list profiles and their daemon state
+  wizard             interactive menu (also runs on a bare \`$(basename "$0")\` in a terminal)
   rollback [label]   restore a snapshot (default: latest)
   snapshot [label]   manually snapshot current dist/
   list               list snapshots, newest first
@@ -539,7 +641,7 @@ main() {
   # are profile-agnostic — they must work (not die on ambiguity) with any
   # number of profiles present.
   case "$sub" in
-    -h|--help|help|""|profiles) ;;
+    -h|--help|help|""|profiles|wizard) ;;
     *) apply_profile ;;
   esac
   case "$sub" in
@@ -556,7 +658,9 @@ main() {
     status|st)            cmd_status ;;
     migrate)              cmd_migrate "$@" ;;
     profiles)             cmd_profiles ;;
-    -h|--help|help|"")    usage ;;
+    wizard)               cmd_wizard ;;
+    -h|--help|help)       usage ;;
+    "")                   if [[ -t 0 && -t 1 ]]; then cmd_wizard; else usage; fi ;;
     *) usage; exit 2 ;;
   esac
 }
