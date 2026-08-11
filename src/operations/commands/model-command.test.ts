@@ -22,7 +22,7 @@ mock.module('../../claude/cli.js', () => ({
 }));
 
 import { showModelPicker, applyModelPick } from './handler.js';
-import { MODEL_CHOICES } from './models.js';
+import { FALLBACK_MODEL_CHOICES } from './models.js';
 import type { Session } from '../../session/types.js';
 import type { SessionContext } from '../session-context/index.js';
 import { createSessionTimers, createSessionLifecycle } from '../../session/types.js';
@@ -94,8 +94,8 @@ describe('showModelPicker', () => {
     const { ctx } = makeCtx();
     await showModelPicker(session, 'alice', false, ctx);
 
-    expect((session as unknown as { __reactions: () => string[] }).__reactions().length).toBe(MODEL_CHOICES.length);
-    expect(session.pendingModelPick).toEqual({ postId: 'picker-1', setDefault: false });
+    expect((session as unknown as { __reactions: () => string[] }).__reactions().length).toBe(FALLBACK_MODEL_CHOICES.length);
+    expect(session.pendingModelPick).toEqual({ postId: 'picker-1', setDefault: false, choices: FALLBACK_MODEL_CHOICES });
   });
 
   it('registers the picker post so reactions on it resolve to the session', async () => {
@@ -131,7 +131,7 @@ describe('applyModelPick', () => {
 
     const handled = await applyModelPick(session, 'picker-1', 0, 'alice', ctx); // index 0 = Opus
     expect(handled).toBe(true);
-    expect(session.modelOverride).toBe(MODEL_CHOICES[0].value ?? undefined);
+    expect(session.modelOverride).toBe(FALLBACK_MODEL_CHOICES[0].value ?? undefined);
     expect(setDefaultModel).not.toHaveBeenCalled();
     expect(session.pendingModelPick).toBeUndefined();
   });
@@ -140,7 +140,7 @@ describe('applyModelPick', () => {
     const session = makeSession();
     const { ctx } = makeCtx();
     session.modelOverride = 'opus';
-    const inheritIndex = MODEL_CHOICES.findIndex((m) => m.value === null);
+    const inheritIndex = FALLBACK_MODEL_CHOICES.findIndex((m) => m.value === null);
     session.pendingModelPick = { postId: 'picker-1', setDefault: false };
 
     await applyModelPick(session, 'picker-1', inheritIndex, 'alice', ctx);
@@ -153,7 +153,7 @@ describe('applyModelPick', () => {
     session.pendingModelPick = { postId: 'picker-1', setDefault: true };
 
     await applyModelPick(session, 'picker-1', 1, 'alice', ctx); // index 1 = Sonnet
-    expect(setDefaultModel).toHaveBeenCalledWith(MODEL_CHOICES[1].value);
-    expect(session.modelOverride).toBe(MODEL_CHOICES[1].value ?? undefined);
+    expect(setDefaultModel).toHaveBeenCalledWith(FALLBACK_MODEL_CHOICES[1].value);
+    expect(session.modelOverride).toBe(FALLBACK_MODEL_CHOICES[1].value ?? undefined);
   });
 });
