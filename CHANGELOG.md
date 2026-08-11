@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.8] - 2026-08-11
+
+### Fixed
+- **Long first-flush replies are split across posts instead of truncated.** When a reply's first flush already exceeded the platform's max message length (no post open yet to update), the split path was skipped and everything past the limit was silently discarded with an `… (truncated)` marker — easiest to hit on Discord (2000-char limit) with long single-block answers. New `splitContentForLength` pre-splits oversized content at logical breakpoints (newline fallback, raw cut last resort) into as many posts as needed; truncation remains only as an unreachable safety net on the update path. Mid-stream splitting unchanged.
+
 ## [2.3.7] - 2026-07-15
 
 ### Fixed
