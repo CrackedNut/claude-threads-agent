@@ -1125,4 +1125,129 @@ describe('ContentExecutor', () => {
       expect(updateCalls).toBe(1);
     });
   });
+
+  describe('First-flush length splitting (RED-GREEN regression test)', () => {
+    // BUG: When the FIRST flush of a reply already exceeds the platform's
+    // maxLength, the split path was gated on currentPostId (no post exists
+    // yet on first flush), so content fell through to truncateMessageSafely
+    // and everything past maxLength was silently discarded.
+    // Easy to hit on Discord (maxLength 2000) with any long single-block answer.
+
+    function createRecordingCtx(maxLength: number, hardThreshold: number) {
+      const createdPosts: string[] = [];
+      let postIdCounter = 0;
+
+      const testPlatform = {
+        ...platform,
+        getMessageLimits: () => ({ maxLength, hardThreshold }),
+        createPost: mock(async (content: string, _threadId: string): Promise<PlatformPost> => {
+          createdPosts.push(content);
+          const id = `post_${++postIdCounter}`;
+          return { id, platformId: 'test', channelId: 'channel-1', message: content, createAt: Date.now(), userId: 'bot' };
+        }),
+        updatePost: mock(async (_postId: string, content: string): Promise<void> => {
+          if (content.length > maxLength) {
+            throw new Error('msg_too_long');
+          }
+        }),
+      } as unknown as PlatformClient;
+
+      const testCtx: ExecutorContext = {
+        sessionId: 'test:session-1',
+        threadId: 'thread-123',
+        platform: testPlatform,
+        postTracker,
+        contentBreaker,
+        formatter: mockFormatter,
+        logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {}, debugJson: () => {}, forSession: () => ({} as any) } as any,
+        createPost: async (content, options) => {
+          const post = await testPlatform.createPost(content, 'thread-123');
+          registeredPosts.set(post.id, options ?? { type: 'content' });
+          lastMessage = post;
+          return post;
+        },
+        createInteractivePost: async (content, reactions, options) => {
+          const post = await testPlatform.createInteractivePost(content, reactions, 'thread-123');
+          registeredPosts.set(post.id, options);
+          lastMessage = post;
+          return post;
+        },
+      };
+
+      return { testCtx, createdPosts };
+    }
+
+    it('splits an oversized first flush across multiple posts instead of truncating', async () => {
+      const { testCtx, createdPosts } = createRecordingCtx(1000, 800);
+
+      // ~2600 chars in one flush, with paragraph breakpoints throughout
+      const paragraphs = Array.from(
+        { length: 10 },
+        (_, i) => `Paragraph ${i}: ${'x'.repeat(240)}`
+      );
+      const content = paragraphs.join('\n\n');
+      expect(content.length).toBeGreaterThan(2000);
+
+      await executor.executeAppend(createAppendContentOp('test', content), testCtx);
+      await executor.executeFlush(createFlushOp('test', 'explicit'), testCtx);
+
+      // Multiple posts, no truncation marker, nothing over the platform limit
+      expect(createdPosts.length).toBeGreaterThanOrEqual(3);
+      for (const post of createdPosts) {
+        expect(post).not.toContain('(truncated)');
+        expect(post.length).toBeLessThanOrEqual(1000);
+      }
+
+      // Every paragraph made it to the channel
+      const allPosted = createdPosts.join('\n\n');
+      for (let i = 0; i < paragraphs.length; i++) {
+        expect(allPosted).toContain(`Paragraph ${i}:`);
+      }
+
+      // Nothing left pending, state points at the last created post
+      expect(executor.getState().pendingContent).toBe('');
+      expect(executor.getState().currentPostId).not.toBeNull();
+    });
+
+    it('splits a very long first flush into as many posts as needed', async () => {
+      const { testCtx, createdPosts } = createRecordingCtx(1000, 800);
+
+      // ~6200 chars — needs many breaks, not just one
+      const paragraphs = Array.from(
+        { length: 24 },
+        (_, i) => `Section ${i}: ${'y'.repeat(240)}`
+      );
+      const content = paragraphs.join('\n\n');
+
+      await executor.executeAppend(createAppendContentOp('test', content), testCtx);
+      await executor.executeFlush(createFlushOp('test', 'explicit'), testCtx);
+
+      expect(createdPosts.length).toBeGreaterThanOrEqual(6);
+      const allPosted = createdPosts.join('\n\n');
+      for (let i = 0; i < paragraphs.length; i++) {
+        expect(allPosted).toContain(`Section ${i}:`);
+      }
+      for (const post of createdPosts) {
+        expect(post.length).toBeLessThanOrEqual(1000);
+      }
+    });
+
+    it('force-splits an oversized first flush even without logical breakpoints', async () => {
+      const { testCtx, createdPosts } = createRecordingCtx(1000, 800);
+
+      // One unbroken 2500-char line: no paragraph/newline breakpoints at all.
+      // The splitter must still hard-cut rather than truncate or exceed maxLength.
+      const content = 'z'.repeat(2500);
+
+      await executor.executeAppend(createAppendContentOp('test', content), testCtx);
+      await executor.executeFlush(createFlushOp('test', 'explicit'), testCtx);
+
+      expect(createdPosts.length).toBeGreaterThanOrEqual(3);
+      for (const post of createdPosts) {
+        expect(post.length).toBeLessThanOrEqual(1000);
+      }
+      // Total content preserved (hard cuts don't add or drop characters)
+      expect(createdPosts.join('').length).toBe(2500);
+    });
+  });
 });

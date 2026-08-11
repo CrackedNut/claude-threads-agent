@@ -10,7 +10,7 @@
 
 import { truncateMessageSafely } from '../../platform/utils.js';
 import { formatShortId } from '../../utils/format.js';
-import { MIN_BREAK_THRESHOLD, splitContentForHeight } from '../content-breaker.js';
+import { MIN_BREAK_THRESHOLD, splitContentForHeight, splitContentForLength } from '../content-breaker.js';
 import type { AppendContentOp, FlushOp } from '../types.js';
 import type { ExecutorContext, ContentState } from './types.js';
 import { BaseExecutor, type ExecutorOptions } from './base.js';
@@ -205,8 +205,11 @@ export class ContentExecutor extends BaseExecutor<ContentState> {
       return;
     }
 
-    // Normal case: content fits in current post
-    if (content.length > MAX_POST_LENGTH) {
+    // Safety net for the update path only. With an existing post, anything
+    // over the hard threshold was already routed to handleSplit above; a
+    // first flush (no post yet) must never be truncated — the create branch
+    // below splits it by length instead.
+    if (this.state.currentPostId && content.length > MAX_POST_LENGTH) {
       ctx.logger.warn(`Content too long (${content.length}), truncating`);
       content = truncateMessageSafely(
         content,
@@ -269,8 +272,17 @@ export class ContentExecutor extends BaseExecutor<ContentState> {
         },
       );
     } else {
-      // Create new post(s) - split if content is too tall
-      const chunks = splitContentForHeight(content, ctx.contentBreaker);
+      // Create new post(s) - split by length first (a first flush longer than
+      // the platform limit must be split across posts, never truncated), then
+      // by height so no chunk triggers "Show more" collapse.
+      const lengthChunks =
+        content.length > HARD_CONTINUATION_THRESHOLD
+          ? splitContentForLength(content, HARD_CONTINUATION_THRESHOLD, ctx.contentBreaker)
+          : [content];
+      const chunks = lengthChunks
+        .flatMap((chunk) => splitContentForHeight(chunk, ctx.contentBreaker))
+        .map((chunk) => chunk.trim())
+        .filter((chunk) => chunk.length > 0);
       ctx.threadLogger?.logExecutor('content', 'create_start', 'none', {
         contentLength: content.length,
         chunkCount: chunks.length,
