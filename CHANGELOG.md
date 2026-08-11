@@ -21,6 +21,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.9] - 2026-08-11
+
+### Added
+- **`!model` pulls the live model list.** The picker now fetches `GET /v1/models` (using the same OAuth credential the spawned Claude CLI runs on) and offers the newest model per family with API display names — newly released models (e.g. Claude Opus 5) appear without a code change. Choices are cached 1h; any fetch failure falls back to the previous static list. `OPENINTEL_LIVE_MODELS=0` forces the fallback. The shown choices are pinned to the pending picker so reactions resolve against exactly what was displayed.
+
+### Fixed
+- **WebSocket reconnect never gives up.** Previously the client stopped permanently after 10 attempts (~17 min ladder), leaving a zombie daemon after any longer outage. Now it retries indefinitely with backoff capped at 60s, logging at warn level past the old cap.
+- **`openintel -p <name>` works with multiple profiles.** Profile resolution ran at script load, before the `-p` flag was parsed, so every invocation died on ambiguity once a second profile existed. Resolution now happens after flag parsing; `help` and `profiles` are profile-agnostic.
+- **`stop` kills the whole process tree and sweeps port squatters.** SIGKILL escalation only watched the daemon pid, so a node child that stalled on SIGTERM survived as a pid-1 orphan squatting the panel port. `stop` now waits for daemon and children, escalates survivors, and kills orphaned `dist/index.js` processes holding the profile's panel port (never unrelated processes).
+
 ## [2.3.8] - 2026-08-11
 
 ### Fixed
