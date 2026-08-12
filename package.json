@@ -1,7 +1,7 @@
 {
   "name": "openintel",
   "version": "2.3.10",
-  "description": "OpenIntel — chat-driven Claude Code agent platform: run autonomous coding agents in Mattermost, Slack, and Discord with a local management dashboard.",
+  "description": "OpenIntel \u2014 chat-driven Claude Code agent platform: run autonomous coding agents in Mattermost, Slack, and Discord with a local management dashboard.",
   "main": "dist/index.js",
   "type": "module",
   "bin": {
@@ -11,7 +11,7 @@
   },
   "scripts": {
     "dev": "bun --watch src/index.ts",
-    "build": "bun build src/index.ts --outdir dist --target node && bun build src/mcp/mcp-server.ts --outdir dist/mcp --target node && bun build src/statusline/writer.ts --outdir dist/statusline --target node",
+    "build": "bun build src/index.ts --outdir dist --target node && bun build src/mcp/mcp-server.ts --outdir dist/mcp --target node && bun build src/statusline/writer.ts --outdir dist/statusline --target node && bun build src/chat.ts --outdir dist --target node",
     "start": "bun dist/index.js",
     "test": "bun test src/",
     "test:watch": "bun test src/ --watch",
