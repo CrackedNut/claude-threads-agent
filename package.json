@@ -1,7 +1,7 @@
 {
   "name": "openintel",
-  "version": "2.3.10",
-  "description": "OpenIntel \u2014 chat-driven Claude Code agent platform: run autonomous coding agents in Mattermost, Slack, and Discord with a local management dashboard.",
+  "version": "2.3.11",
+  "description": "OpenIntel — chat-driven Claude Code agent platform: run autonomous coding agents in Mattermost, Slack, and Discord with a local management dashboard.",
   "main": "dist/index.js",
   "type": "module",
   "bin": {

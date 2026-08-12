@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.11] - 2026-08-11
+
+### Added
+- **`openintel chat` — terminal chat with a bot.** Fallback for when the chat platform is unreachable: launches an interactive Claude session carrying the profile's full bot identity — persona (SOUL/DIRECTIVES/projects/brain), skills index, working dir, permission mode, and saved default model — resolved exactly like a daemon session spawn. Picks the profile interactively when none is given (`-p <name> chat` and `--platform <id>` for multi-bot daemons also work); available from the wizard's per-bot menu too.
+
 ## [2.3.10] - 2026-08-11
 
 ### Added
