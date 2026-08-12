@@ -489,6 +489,42 @@ cmd_profiles() {
 }
 
 # ---------------------------------------------------------------------------
+# Terminal chat with a profile's bot — fallback for when the chat platform is
+# down. Picks a profile interactively when none was given, then launches an
+# interactive Claude session carrying that bot's identity (persona, brain,
+# skills, working dir, permission mode, default model) via dist/chat.js.
+cmd_chat() {
+  require_repo
+  if [[ -z "$PROFILE" && -z "${OPENINTEL_HOME:-}" && ! -f "$HOME/.config/claude-threads/config.yaml" ]]; then
+    local profiles=() d
+    for d in "$PROFILES_ROOT"/*/; do
+      [[ -f "$d/config.yaml" ]] && profiles+=("$(basename "$d")")
+    done
+    [[ ${#profiles[@]} -gt 0 ]] || die "no profiles at $PROFILES_ROOT — run \`$(basename "$0") setup\` first"
+    if [[ ${#profiles[@]} -eq 1 ]]; then
+      PROFILE="${profiles[0]}"
+    elif [[ -t 0 ]]; then
+      printf '\n%sPick a bot to chat with:%s\n' "$BLUE" "$RESET" >&2
+      local i
+      for i in "${!profiles[@]}"; do printf '  %d) %s\n' $((i + 1)) "${profiles[i]}" >&2; done
+      local pick
+      read -r -p "> " pick || exit 0
+      if [[ "$pick" =~ ^[0-9]+$ ]] && (( pick >= 1 && pick <= ${#profiles[@]} )); then
+        PROFILE="${profiles[pick-1]}"
+      else
+        die "invalid choice: $pick"
+      fi
+    else
+      die "multiple profiles — specify one: $(basename "$0") -p <name> chat"
+    fi
+  fi
+  apply_profile
+  [[ -f "$REPO/dist/chat.js" ]] || die "dist/chat.js missing — run \`$(basename "$0") install\` first"
+  log "terminal chat${PROFILE:+ (bot: $PROFILE)} — exit Claude to return to your shell"
+  ( cd "$REPO" && exec node dist/chat.js "$@" )
+}
+
+# ---------------------------------------------------------------------------
 # Interactive wizard — what a bare `openintel` runs on a TTY (also reachable
 # as the `wizard` subcommand). Pick a bot, then a command. Every action is
 # executed by re-invoking this script with explicit `-p <name> <cmd>` flags,
@@ -542,7 +578,7 @@ wizard_actions() {
   if [[ "$target" == all ]]; then
     actions=(status start stop restart install)
   else
-    actions=(status logs panel start stop restart install rollback)
+    actions=(status logs chat panel start stop restart install rollback)
   fi
 
   while true; do
@@ -554,6 +590,7 @@ wizard_actions() {
       case "${actions[i]}" in
         status)   desc="status    — daemon, version, commit" ;;
         logs)     desc="logs      — live tail (Ctrl-C returns here)" ;;
+        chat)     desc="chat      — talk to this bot in the terminal" ;;
         panel)    desc="panel     — open the dashboard" ;;
         start)    desc="start" ;;
         stop)     desc="stop" ;;
@@ -603,6 +640,7 @@ commands:
   migrate <name>     move a legacy install into profile ~/openintel/<name>
   profiles           list profiles and their daemon state
   wizard             interactive menu (also runs on a bare \`$(basename "$0")\` in a terminal)
+  chat               chat with a bot in the terminal (platform-down fallback)
   rollback [label]   restore a snapshot (default: latest)
   snapshot [label]   manually snapshot current dist/
   list               list snapshots, newest first
@@ -641,7 +679,7 @@ main() {
   # are profile-agnostic — they must work (not die on ambiguity) with any
   # number of profiles present.
   case "$sub" in
-    -h|--help|help|""|profiles|wizard) ;;
+    -h|--help|help|""|profiles|wizard|chat) ;;
     *) apply_profile ;;
   esac
   case "$sub" in
@@ -659,6 +697,7 @@ main() {
     migrate)              cmd_migrate "$@" ;;
     profiles)             cmd_profiles ;;
     wizard)               cmd_wizard ;;
+    chat)                 cmd_chat "$@" ;;
     -h|--help|help)       usage ;;
     "")                   if [[ -t 0 && -t 1 ]]; then cmd_wizard; else usage; fi ;;
     *) usage; exit 2 ;;
